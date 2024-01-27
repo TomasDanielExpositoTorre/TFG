@@ -1,7 +1,9 @@
+#include "selcap.h"
 #include <argp.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "selcap.h"
+#include <signal.h>
+
 
 const char *argp_program_version = "HostNic 1.0";
 const char *argp_program_bug_address = "<tomas.exposito@estudiante.uam.es>";
@@ -46,13 +48,30 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 }
 
 static struct argp argp = {options, parse_opt, 0, NULL};
+static pcap_t* handle;
+
+void sighandler(int signal)
+{
+    pcap_breakloop(handle);
+    printf("\nSIGNAL received, stopping packet capture...\n");
+}
 
 int main(int argc, char** argv)
 {
     HandlerArgs args;
-    pcap_t* handle;
+    struct sigaction act;
     char error_buff[PCAP_ERRBUF_SIZE];
     
+    act.sa_handler = sighandler;
+    act.sa_flags = 0;
+    sigemptyset(&(act.sa_mask));
+
+    if(sigaction(SIGINT, &act, NULL) < 0)
+    {
+        perror("sigaction");
+        return EXIT_FAILURE;
+    }
+
     args.percentage = 45;
     args.threshold = 15;
     args.interface = NULL;
@@ -64,7 +83,7 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-    handle = pcap_open_live(args.interface, BUFSIZ, 1, 1000, error_buff);
+    handle = pcap_open_live(args.interface, CAPSIZE, 1, 1000, error_buff);
     
     if (handle == NULL)
     {

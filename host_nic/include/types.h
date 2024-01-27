@@ -1,5 +1,13 @@
 #ifndef __TYPES_H__
 #define __TYPES_H__
+
+/* Compatibility stuff */
+#define _XOPEN_SOURCE 700 /* Required for signal handling */
+typedef unsigned char u_char;
+typedef unsigned int u_int;
+typedef unsigned short u_short;
+/* ------------------- */
+
 #include <pcap.h>
 #include <netinet/in.h>
 #include <net/ethernet.h>
