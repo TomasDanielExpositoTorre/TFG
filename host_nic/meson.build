@@ -1,6 +1,7 @@
 project('Host-Nic', 'c')
+subdir('src')
 
-deps = [dependency('pcap')]
-src = ['driver.c', 'selcap.c']
+deps = dependency('pcap')
+includir = include_directories('include')
 
-executable('hostnic', src, dependencies: deps)
+executable('hostnic', sources, dependencies: deps, include_directories: includir)
