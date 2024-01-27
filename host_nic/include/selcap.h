@@ -1,16 +1,8 @@
 #ifndef __SELCAP_H__
 #define __SELCAP_H__
-#include <pcap.h>
+
 #include <string.h>
-
-#define MIN_ASCII 0x20
-#define MAX_ASCII 0x7E
-
-typedef struct
-{
-    uint8_t percentage, threshold;
-    // TODO add a way to save the captured packets
-} SelectiveCapperArguments;
+#include "types.h"
 
 /**
  * Applies the vanilla selective capping algorithm over the received packet.
