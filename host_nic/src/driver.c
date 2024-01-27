@@ -72,7 +72,7 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-    pcap_loop(handle, -1, selective_capping, (unsigned char*)&(args));
+    pcap_loop(handle, -1, selective_capping_optimized, (unsigned char*)&(args));
     pcap_close(handle);
     return EXIT_SUCCESS;
 }
