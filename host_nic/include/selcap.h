@@ -1,8 +1,8 @@
 #ifndef __SELCAP_H__
 #define __SELCAP_H__
 
-#include <string.h>
 #include "types.h"
+#include <string.h>
 
 /**
  * Applies the vanilla selective capping algorithm over the received packet.

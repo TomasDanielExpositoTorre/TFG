@@ -76,14 +76,13 @@ void selective_capping_optimized(unsigned char *args, const struct pcap_pkthdr *
     int consecutive, total, payload_start;
 
     /* For now, return if we don't know the header length (this packet is lost) */
-    if((payload_start = header_len(packet)) == -1)
+    if((payload_start = header_len(packet)) == 0)
         return;
     consecutive = total = 0;
-
     /* Assume that the packet payload is at least threshold bytes long */
-    for (int i = payload_start + hargs.threshold-1, j = payload_start + hargs.threshold-1; i < header->caplen; j--)
+    for (int i = payload_start + hargs.threshold-1; i >= payload_start && i < header->caplen; i--)
     {
-        if (packet[j] >= MIN_ASCII && packet[j] <= MAX_ASCII)
+        if (packet[i] >= MIN_ASCII && packet[i] <= MAX_ASCII)
         {
             consecutive++;
             total += 100;
@@ -97,8 +96,7 @@ void selective_capping_optimized(unsigned char *args, const struct pcap_pkthdr *
         else
         {
             consecutive = 0;
-            i += hargs.threshold;
-            j = i + 1;
+            i += hargs.threshold + 1;
         }
     }
     if (total >= (hargs.percentage * header->caplen))
