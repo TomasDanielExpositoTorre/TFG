@@ -13,12 +13,12 @@ typedef unsigned short u_short;
 #include <net/ethernet.h>
 
 /* Ethernet Header Values */
-
 typedef struct
 {
     unsigned char dst[ETH_ALEN], src[ETH_ALEN];
     unsigned short ether_type;
 } ETHeader;
+
 
 /* IP Header Values */
 typedef struct
@@ -62,6 +62,12 @@ typedef struct
     unsigned short checksum;
     unsigned short urgent;
 } TCPHeader;
+
+/* Extra Values */
+#define VLAN_HLEN 4
+#define UDP_LEN 8
+#define ERR_UNSUPPORTED -1
+#define ERR_ILL_FORMED -2
 
 /* Selective Capping Values */
 #define CAPSIZE 65535
