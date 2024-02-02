@@ -49,14 +49,13 @@ int header_len(const unsigned char *packet, bpf_u_int32 caplen)
     return ERR_UNSUPPORTED;
 }
 
-void selective_capping(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet)
+int selcap(HandlerArgs h_args, const struct pcap_pkthdr *header, const unsigned char *packet)
 {
-    HandlerArgs h_args = *(HandlerArgs *)(args);
     int consecutive, total, payload_start;
 
     /* Skip the packet on error */
     if ((payload_start = header_len(packet, header->caplen)) < 0)
-        return;
+        return -20;
     consecutive = total = 0;
 
     for (int i = payload_start; i < header->caplen; i++)
@@ -66,37 +65,30 @@ void selective_capping(unsigned char *args, const struct pcap_pkthdr *header, co
             consecutive++;
             total += 100;
             if (consecutive == h_args.threshold)
-            {
-                printf("Do not cap.\n");
-                return;
-            }
+                return NO_CAPPING;
         }
         else
             consecutive = 0;
     }
 
     if (total >= (h_args.percentage * header->caplen))
-    {
-        printf("Do not cap. Total ASCII:%.2lf\n", (total * 1.0 / header->caplen));
-        return;
-    }
+        return NO_CAPPING;
 
-    printf("Cap. Total ASCII:%.2lf\n", (total * 1.0 / header->caplen));
+    return payload_start;
 }
 
-void selective_capping_optimized(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet)
+int optcap(HandlerArgs h_args, const struct pcap_pkthdr *header, const unsigned char *packet)
 {
-    HandlerArgs h_args = *(HandlerArgs *)(args);
     int consecutive, total, payload_start;
 
     /* Skip the packet on error */
     if ((payload_start = header_len(packet, header->caplen)) < 0)
-        return;
-    
+        return payload_start;
+
     /* Skip if payload cannot reach threshold */
-    if(payload_start + h_args.threshold - 1 > header->caplen)
-        return;
-    
+    if (payload_start + h_args.threshold - 1 > header->caplen)
+        return ERR_UNSUPPORTED;
+
     consecutive = total = 0;
     for (int i = payload_start + h_args.threshold - 1; i >= payload_start && i < header->caplen; i--)
     {
@@ -105,10 +97,7 @@ void selective_capping_optimized(unsigned char *args, const struct pcap_pkthdr *
             consecutive++;
             total += 100;
             if (consecutive == h_args.threshold)
-            {
-                printf("Do not cap.\n");
-                return;
-            }
+                return NO_CAPPING;
         }
         else
         {
@@ -118,10 +107,101 @@ void selective_capping_optimized(unsigned char *args, const struct pcap_pkthdr *
     }
 
     if (total >= (h_args.percentage * header->caplen))
-    {
-        printf("Do not cap. Total ASCII:%.2lf\n", (total * 1.0 / header->caplen));
+        return NO_CAPPING;
+
+    return payload_start;
+}
+
+void selective_capping(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet)
+{
+    HandlerArgs h_args = *(HandlerArgs *)(args);
+    int slice = selcap(h_args, header, packet);
+
+    if (slice < NO_CAPPING)
         return;
+
+    if (slice == NO_CAPPING)
+    {
+        printf("Do not cap.\n"); // TODO
+    }
+    else
+    {
+        printf("Cap at length %d\n", slice); // TODO
+    }
+}
+
+void optimized_capping(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet)
+{
+    HandlerArgs h_args = *(HandlerArgs *)(args);
+    int slice = optcap(h_args, header, packet);
+
+    if (slice < NO_CAPPING)
+        return;
+
+    if (slice == NO_CAPPING)
+    {
+        printf("Do not cap.\n"); // TODO
+    }
+    else
+    {
+        printf("Cap at length %d\n", slice); // TODO
+    }
+}
+
+void* selective_capping_thread(void *args)
+{
+    ThreadArgs *t_args = (ThreadArgs *)args;
+    HandlerArgs h_args = t_args->h_args;
+    const unsigned char *packet;
+    struct pcap_pkthdr header;
+    int slice;
+
+    while (t_args->signaled == 0)
+    {
+        pthread_mutex_lock(&(t_args->pmutex));
+        packet = pcap_next(t_args->handle, &header);
+        pthread_mutex_unlock(&(t_args->pmutex));
+
+        slice = selcap(h_args, &header, packet);
+
+        if (slice == NO_CAPPING)
+        {
+            printf("Do not cap.\n"); // TODO but with mutex
+        }
+        else if (slice > NO_CAPPING)
+        {
+            printf("Cap at length %d\n", slice); // TODO but with mutex
+        }
     }
 
-    printf("Cap. Total ASCII:%.2lf\n", (total * 1.0 / header->caplen));
+    return NULL;
+}
+
+void* optimized_capping_thread(void *args)
+{
+    ThreadArgs *t_args = (ThreadArgs *)args;
+    HandlerArgs h_args = t_args->h_args;
+    const unsigned char *packet;
+    struct pcap_pkthdr header;
+    int slice;
+
+    while (t_args->signaled == 0)
+    {
+        pthread_mutex_lock(&(t_args->pmutex));
+        packet = pcap_next(t_args->handle, &header);
+        pthread_mutex_unlock(&(t_args->pmutex));
+
+        slice = selcap(h_args, &header, packet);
+
+        if (slice == NO_CAPPING)
+        {
+            printf("Do not cap.\n"); // TODO but with mutex
+        }
+        else if (slice > NO_CAPPING)
+        {
+            printf("Cap at length %d\n", slice); // TODO but with mutex
+        }
+    }
+
+    return NULL;
 }

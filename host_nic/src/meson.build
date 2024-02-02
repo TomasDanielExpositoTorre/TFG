@@ -1,1 +1,2 @@
-sources = files('driver.c', 'selcap.c')
+sources_mono = files('driver-mono.c', 'selcap.c')
+sources_multi = files('driver-multi.c', 'selcap.c', 'sighandling.c')
