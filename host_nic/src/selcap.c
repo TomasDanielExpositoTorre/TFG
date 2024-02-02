@@ -194,7 +194,7 @@ void *optimized_capping_thread(void *args)
         packet = pcap_next(t_args->handle, &header);
         pthread_mutex_unlock(&(t_args->m_read));
 
-        slice = selcap(h_args, &header, packet);
+        slice = optcap(h_args, &header, packet);
 
         if (slice == NO_CAPPING)
         {
