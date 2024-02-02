@@ -7,7 +7,6 @@
 #include <signal.h>
 #include <pthread.h>
 
-
 const char *argp_program_version = "HostNic Multi 1.0";
 const char *argp_program_bug_address = "<tomas.exposito@estudiante.uam.es>";
 
@@ -85,8 +84,9 @@ int main(int argc, char **argv)
 
     if ((threads = (pthread_t *)malloc(NTHREADS * sizeof(threads[0]))) == NULL)
         return EXIT_FAILURE;
-    pthread_mutex_init(&(t_args.pmutex), NULL);
-    
+    pthread_mutex_init(&(t_args.m_read), NULL);
+    pthread_mutex_init(&(t_args.m_write), NULL);
+
     t_args.h_args.percentage = 45;
     t_args.h_args.threshold = 15;
     t_args.h_args.interface = NULL;
@@ -111,18 +111,22 @@ int main(int argc, char **argv)
         fprintf(stderr, "Device %s doesn't provide Ethernet headers - not supported.\n", t_args.h_args.interface);
         return EXIT_FAILURE;
     }
-    
-    for(int i = 0; i < NTHREADS; i++)
-        pthread_create(threads + i, &attr, selective_capping_thread, (void*)&(t_args));
+
+    t_args.h_args.file = pcap_dump_open(t_args.handle, "../driver-multi.pcap");
+    for (int i = 0; i < NTHREADS; i++)
+        pthread_create(threads + i, &attr, selective_capping_thread, (void *)&(t_args));
 
     sigsuspend(&mask);
 
-    for(int i = 0; i < NTHREADS; i++)
+    for (int i = 0; i < NTHREADS; i++)
         pthread_join(*(threads + i), NULL);
 
-    pthread_attr_destroy(&attr);
-    pthread_mutex_destroy(&(t_args.pmutex));
-    pcap_close(t_args.handle);
     free(threads);
+    pcap_close(t_args.handle);
+    pthread_attr_destroy(&attr);
+    pcap_dump_flush(t_args.h_args.file);
+    pcap_dump_close(t_args.h_args.file);
+    pthread_mutex_destroy(&(t_args.m_read));
+    pthread_mutex_destroy(&(t_args.m_write));
     return EXIT_SUCCESS;
 }

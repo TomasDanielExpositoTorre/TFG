@@ -15,14 +15,15 @@ typedef struct
 {
     uint8_t percentage, threshold;
     char *interface;
-    // TODO add a way to save the captured packets
+    pcap_dumper_t *file;
 } HandlerArgs;
 
 typedef struct
 {
     HandlerArgs h_args;
     pcap_t *handle;
-    pthread_mutex_t pmutex;
+    pthread_mutex_t m_read;
+    pthread_mutex_t m_write;
     short signaled;
 } ThreadArgs;
 

@@ -59,6 +59,5 @@ typedef struct
 /* Extra Values */
 #define VLAN_HLEN 4
 #define UDP_LEN 8
-#define MINLENGTH 42 /* Minimum length of supported headers: ETH + IP + UDP */
 
 #endif

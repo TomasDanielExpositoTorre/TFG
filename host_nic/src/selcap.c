@@ -117,16 +117,15 @@ void selective_capping(unsigned char *args, const struct pcap_pkthdr *header, co
     HandlerArgs h_args = *(HandlerArgs *)(args);
     int slice = selcap(h_args, header, packet);
 
-    if (slice < NO_CAPPING)
-        return;
-
     if (slice == NO_CAPPING)
     {
-        printf("Do not cap.\n"); // TODO
+        pcap_dump((unsigned char *)h_args.file, header, packet);
     }
-    else
+    else if (slice > NO_CAPPING)
     {
-        printf("Cap at length %d\n", slice); // TODO
+        struct pcap_pkthdr *h = (struct pcap_pkthdr *)header;
+        h->caplen = slice;
+        pcap_dump((unsigned char *)h_args.file, h, packet);
     }
 }
 
@@ -135,20 +134,19 @@ void optimized_capping(unsigned char *args, const struct pcap_pkthdr *header, co
     HandlerArgs h_args = *(HandlerArgs *)(args);
     int slice = optcap(h_args, header, packet);
 
-    if (slice < NO_CAPPING)
-        return;
-
     if (slice == NO_CAPPING)
     {
-        printf("Do not cap.\n"); // TODO
+        pcap_dump((unsigned char *)h_args.file, header, packet);
     }
-    else
+    else if (slice > NO_CAPPING)
     {
-        printf("Cap at length %d\n", slice); // TODO
+        struct pcap_pkthdr *h = (struct pcap_pkthdr *)header;
+        h->caplen = slice;
+        pcap_dump((unsigned char *)h_args.file, h, packet);
     }
 }
 
-void* selective_capping_thread(void *args)
+void *selective_capping_thread(void *args)
 {
     ThreadArgs *t_args = (ThreadArgs *)args;
     HandlerArgs h_args = t_args->h_args;
@@ -158,26 +156,31 @@ void* selective_capping_thread(void *args)
 
     while (t_args->signaled == 0)
     {
-        pthread_mutex_lock(&(t_args->pmutex));
+        pthread_mutex_lock(&(t_args->m_read));
         packet = pcap_next(t_args->handle, &header);
-        pthread_mutex_unlock(&(t_args->pmutex));
+        pthread_mutex_unlock(&(t_args->m_read));
 
         slice = selcap(h_args, &header, packet);
 
         if (slice == NO_CAPPING)
         {
-            printf("Do not cap.\n"); // TODO but with mutex
+            pthread_mutex_lock(&(t_args->m_write));
+            pcap_dump((unsigned char *)h_args.file, &header, packet);
+            pthread_mutex_unlock(&(t_args->m_write));
         }
         else if (slice > NO_CAPPING)
         {
-            printf("Cap at length %d\n", slice); // TODO but with mutex
+            pthread_mutex_lock(&(t_args->m_write));
+            header.caplen = slice;
+            pcap_dump((unsigned char *)h_args.file, &header, packet);
+            pthread_mutex_unlock(&(t_args->m_write));
         }
     }
 
     return NULL;
 }
 
-void* optimized_capping_thread(void *args)
+void *optimized_capping_thread(void *args)
 {
     ThreadArgs *t_args = (ThreadArgs *)args;
     HandlerArgs h_args = t_args->h_args;
@@ -187,19 +190,24 @@ void* optimized_capping_thread(void *args)
 
     while (t_args->signaled == 0)
     {
-        pthread_mutex_lock(&(t_args->pmutex));
+        pthread_mutex_lock(&(t_args->m_read));
         packet = pcap_next(t_args->handle, &header);
-        pthread_mutex_unlock(&(t_args->pmutex));
+        pthread_mutex_unlock(&(t_args->m_read));
 
         slice = selcap(h_args, &header, packet);
 
         if (slice == NO_CAPPING)
         {
-            printf("Do not cap.\n"); // TODO but with mutex
+            pthread_mutex_lock(&(t_args->m_write));
+            pcap_dump((unsigned char *)h_args.file, &header, packet);
+            pthread_mutex_unlock(&(t_args->m_write));
         }
         else if (slice > NO_CAPPING)
         {
-            printf("Cap at length %d\n", slice); // TODO but with mutex
+            pthread_mutex_lock(&(t_args->m_write));
+            header.caplen = slice;
+            pcap_dump((unsigned char *)h_args.file, &header, packet);
+            pthread_mutex_unlock(&(t_args->m_write));
         }
     }
 

@@ -1,4 +1,5 @@
 #include "selcap.h"
+#include "sighandling.h"
 #include <argp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,14 +59,9 @@ void sighandler(int signal)
 int main(int argc, char **argv)
 {
     HandlerArgs args;
-    struct sigaction act;
     char error_buff[PCAP_ERRBUF_SIZE];
 
-    act.sa_handler = sighandler;
-    act.sa_flags = 0;
-    sigemptyset(&(act.sa_mask));
-
-    if (sigaction(SIGINT, &act, NULL) < 0)
+    if (block_signal(SIGINT) | install_handler(SIGINT, sighandler) | unblock_signal(SIGINT))
     {
         perror("sigaction");
         return EXIT_FAILURE;
@@ -82,7 +78,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    handle = pcap_open_live(args.interface, ETH_FRAME_LEN, 1, 1000, error_buff);
+    handle = pcap_open_live(args.interface, ETH_FRAME_LEN, 1, 10, error_buff);
 
     if (handle == NULL)
     {
@@ -96,7 +92,11 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+    args.file = pcap_dump_open(handle, "../driver-mono.pcap");
     pcap_loop(handle, -1, optimized_capping, (unsigned char *)&(args));
+    
     pcap_close(handle);
+    pcap_dump_flush(args.file);
+    pcap_dump_close(args.file);
     return EXIT_SUCCESS;
 }
