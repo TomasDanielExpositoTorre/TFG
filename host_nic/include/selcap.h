@@ -10,22 +10,33 @@
 #define ERR_UNSUPPORTED -1
 #define ERR_ILL_FORMED -2
 #define NTHREADS 8
-
-typedef struct
+typedef struct __LoggingInfo__
 {
+    pthread_mutex_t log_mutex;
+    int captured_bytes;
+    int total_bytes;
+    int packets;
+    int elapsed_time;
+} LoggingInfo;
+
+typedef struct __Arguments__
+{
+    LoggingInfo log;
     uint8_t percentage, threshold;
     char *interface;
     pcap_dumper_t *file;
-} HandlerArgs;
+} Arguments;
 
-typedef struct
+typedef struct __ThreadArguments__
 {
-    HandlerArgs h_args;
+    Arguments args;
     pcap_t *handle;
-    pthread_mutex_t m_read;
-    pthread_mutex_t m_write;
+    pthread_mutex_t read_mutex;
+    pthread_mutex_t write_mutex;
     short signaled;
-} ThreadArgs;
+} ThreadArguments;
+
+void capping_log(void *args);
 
 /**
  * Applies the vanilla selective capping algorithm over the received packet.

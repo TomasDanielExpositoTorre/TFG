@@ -16,7 +16,7 @@ static struct argp_option options[] = {
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state)
 {
-    HandlerArgs *args = state->input;
+    Arguments *args = state->input;
 
     switch (key)
     {
@@ -58,7 +58,7 @@ void sighandler(int signal)
 
 int main(int argc, char **argv)
 {
-    HandlerArgs args;
+    Arguments args;
     char error_buff[PCAP_ERRBUF_SIZE];
 
     if (block_signal(SIGINT) | install_handler(SIGINT, sighandler) | unblock_signal(SIGINT))

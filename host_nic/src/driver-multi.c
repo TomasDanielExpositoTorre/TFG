@@ -18,26 +18,26 @@ static struct argp_option options[] = {
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state)
 {
-    ThreadArgs *t_args = state->input;
+    ThreadArguments *t_args = state->input;
 
     switch (key)
     {
     case 'i':
-        t_args->h_args.interface = arg;
+        t_args->args.interface = arg;
         break;
     case 'p':
-        t_args->h_args.percentage = (uint8_t)atoi(arg);
+        t_args->args.percentage = (uint8_t)atoi(arg);
         break;
     case 't':
-        t_args->h_args.threshold = (uint8_t)atoi(arg);
+        t_args->args.threshold = (uint8_t)atoi(arg);
         break;
     case ARGP_KEY_END:
-        if (t_args->h_args.percentage <= 0 || t_args->h_args.percentage > 100)
+        if (t_args->args.percentage <= 0 || t_args->args.percentage > 100)
         {
             fprintf(stdout, "Given percentage must be a value between 1 and 100.\n");
             exit(EXIT_FAILURE);
         }
-        if (t_args->h_args.threshold == 0)
+        if (t_args->args.threshold == 0)
         {
             fprintf(stdout, "Given threshold must be a value greater than 0.\n");
             exit(EXIT_FAILURE);
@@ -50,7 +50,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 }
 
 static struct argp argp = {options, parse_opt, 0, NULL};
-static ThreadArgs t_args;
+static ThreadArguments t_args;
 
 void sighandler(int signal)
 {
@@ -84,12 +84,16 @@ int main(int argc, char **argv)
 
     if ((threads = (pthread_t *)malloc(NTHREADS * sizeof(threads[0]))) == NULL)
         return EXIT_FAILURE;
-    pthread_mutex_init(&(t_args.m_read), NULL);
-    pthread_mutex_init(&(t_args.m_write), NULL);
+    pthread_mutex_init(&(t_args.read_mutex), NULL);
+    pthread_mutex_init(&(t_args.write_mutex), NULL);
+    pthread_mutex_init(&(t_args.args.log.log_mutex), NULL);
 
-    t_args.h_args.percentage = 45;
-    t_args.h_args.threshold = 15;
-    t_args.h_args.interface = NULL;
+    t_args.args.percentage = 45;
+    t_args.args.threshold = 15;
+    t_args.args.interface = NULL;
+    t_args.args.log.packets = 0;
+    t_args.args.log.total_bytes = 0;
+    t_args.args.log.captured_bytes = 0;
     argp_parse(&argp, argc, argv, 0, 0, &t_args);
 
     if (pcap_init(PCAP_CHAR_ENC_UTF_8, error_buff) == PCAP_ERROR)
@@ -98,7 +102,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    t_args.handle = pcap_open_live(t_args.h_args.interface, ETH_FRAME_LEN, 1, 1000, error_buff);
+    t_args.handle = pcap_open_live(t_args.args.interface, ETH_FRAME_LEN, 1, 1000, error_buff);
 
     if (t_args.handle == NULL)
     {
@@ -108,15 +112,21 @@ int main(int argc, char **argv)
 
     if (pcap_datalink(t_args.handle) != DLT_EN10MB)
     {
-        fprintf(stderr, "Device %s doesn't provide Ethernet headers - not supported.\n", t_args.h_args.interface);
+        fprintf(stderr, "Device %s doesn't provide Ethernet headers - not supported.\n", t_args.args.interface);
         return EXIT_FAILURE;
     }
 
-    t_args.h_args.file = pcap_dump_open(t_args.handle, "../driver-multi.pcap");
+    t_args.args.file = pcap_dump_open(t_args.handle, "../driver-multi.pcap");
     for (int i = 0; i < NTHREADS; i++)
         pthread_create(threads + i, &attr, selective_capping_thread, (void *)&(t_args));
 
-    sigsuspend(&mask);
+    sleep(5);
+
+    while(t_args.signaled == 0)
+    {
+        capping_log((void*)&(t_args));
+        sleep(5);
+    }
 
     for (int i = 0; i < NTHREADS; i++)
         pthread_join(*(threads + i), NULL);
@@ -124,9 +134,11 @@ int main(int argc, char **argv)
     free(threads);
     pcap_close(t_args.handle);
     pthread_attr_destroy(&attr);
-    pcap_dump_flush(t_args.h_args.file);
-    pcap_dump_close(t_args.h_args.file);
-    pthread_mutex_destroy(&(t_args.m_read));
-    pthread_mutex_destroy(&(t_args.m_write));
+    pcap_dump_flush(t_args.args.file);
+    pcap_dump_close(t_args.args.file);
+    pthread_mutex_destroy(&(t_args.read_mutex));
+    pthread_mutex_destroy(&(t_args.write_mutex));
+    pthread_mutex_destroy(&(t_args.args.log.log_mutex));
+
     return EXIT_SUCCESS;
 }
