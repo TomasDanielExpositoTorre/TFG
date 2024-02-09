@@ -10,7 +10,6 @@
 #define NO_CAPPING 0
 #define ERR_UNSUPPORTED -1
 #define ERR_ILL_FORMED -2
-#define NTHREADS 8
 typedef struct __LoggingInfo__
 {
     pthread_mutex_t log_mutex;
@@ -37,11 +36,42 @@ typedef struct __ThreadArguments__
     short signaled;
 } ThreadArguments;
 
-void capping_log(void *args);
+#define log_write(log, capped, total)      \
+    pthread_mutex_lock(&(log->log_mutex)); \
+    log->packets++;                        \
+    log->captured_bytes += capped;         \
+    log->total_bytes += total;             \
+    pthread_mutex_unlock(&(log->log_mutex))
+
+#define log_init(log)        \
+    log->packets = 0;        \
+    log->total_bytes = 0;    \
+    log->captured_bytes = 0; \
+    log->elapsed_time = 0
+
+#define args_init(args, p, th) \
+    args->percentage = p;      \
+    args->threshold = th;      \
+    args->interface = NULL
+
+#define psem_init(x) pthread_mutex_init(&(x), NULL)
+#define psem_destroy(x) pthread_mutex_destroy(&(x))
+#define psem_down(x) pthread_mutex_lock(&(x))
+#define psem_up(x) pthread_mutex_unlock(&(x))
 
 /**
- * Applies the vanilla selective capping algorithm over the received packet.
- * This function is used as a callback by pcap_loop, so it has no return value.
+ * Prints average capture statistics through standard output.
+ *
+ * @param log Logging information.
+ */
+void capping_log(LoggingInfo *log);
+
+/**
+ * Callback function for pcap_loop. Applies selective capping over the received
+ * packet.
+ *
+ * @details define __OPTIMIZED to use the optimized version of the algorithm.
+ * @details define __SIMSTORAGE to skip packet dumping process.
  *
  * @param args Additional arguments to be sent by the user.
  * @param header Generic per-packet information, as supplied by libpcap.
@@ -49,5 +79,11 @@ void capping_log(void *args);
  */
 void selective_capping(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet);
 
+/**
+ * Thread start routine for packet capture with libpcap. Applies selective
+ * capping over the received packet.
+ *
+ * @param args ThreadArguments*.
+ */
 void *selective_capping_thread(void *args);
 #endif

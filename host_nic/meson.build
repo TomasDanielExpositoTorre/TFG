@@ -1,6 +1,9 @@
 project('Host-Nic', 'c')
 subdir('src')
 
+add_global_arguments(['-D__OPTIMIZED', '-DNTHREADS=8'], language : 'c')
+# add_global_arguments(['-D__OPTIMIZED', '-D__SIMSTORAGE'], language : 'c')
+
 deps = dependency('pcap')
 includir = include_directories('include')
 

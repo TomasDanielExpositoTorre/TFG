@@ -12,8 +12,6 @@ const char *argp_program_bug_address = "<tomas.exposito@estudiante.uam.es>";
 
 static struct argp_option options[] = {
     {"if", 'i', "name", 0, "Interface used to capture packets."},
-    {"percentage", 'p', "int", 0, "Percentage of total ASCII required per packet."},
-    {"threshold", 't', "int", 0, "Consecutive ASCII required per packet."},
     {0}};
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state)
@@ -25,24 +23,6 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
     case 'i':
         args->interface = arg;
         break;
-    case 'p':
-        args->percentage = (uint8_t)atoi(arg);
-        break;
-    case 't':
-        args->threshold = (uint8_t)atoi(arg);
-        break;
-    case ARGP_KEY_END:
-        if (args->percentage <= 0 || args->percentage > 100)
-        {
-            fprintf(stdout, "Given percentage must be a value between 1 and 100.\n");
-            exit(EXIT_FAILURE);
-        }
-        if (args->threshold == 0)
-        {
-            fprintf(stdout, "Given threshold must be a value greater than 0.\n");
-            exit(EXIT_FAILURE);
-        }
-
     default:
         return ARGP_ERR_UNKNOWN;
     }
@@ -62,11 +42,12 @@ void sighandler(int signal)
 
 void *logging_thread(void *args)
 {
+    LoggingInfo* log = (LoggingInfo*) args;
     sleep(5);
 
     while (signaled == 0)
     {
-        capping_log(args);
+        capping_log(log);
         sleep(5);
     }
 
@@ -81,6 +62,7 @@ int main(int argc, char **argv)
     sigset_t thread_mask;
     char error_buff[PCAP_ERRBUF_SIZE];
 
+    /* Block SIGINT for all threads except master */
     set_mask(thread_mask, SIGINT);
 
     if (block_signal(SIGINT) ||
@@ -95,19 +77,16 @@ int main(int argc, char **argv)
         pthread_attr_setsigmask_np(&attr, &thread_mask) ||
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED))
     {
-        fprintf(stderr, "Could not- initialize children threads.\n");
+        fprintf(stderr, "Could not initialize children threads.\n");
         return EXIT_FAILURE;
     }
 
-    args.percentage = 45;
-    args.threshold = 15;
-    args.interface = NULL;
-    args.log.packets = 0;
-    args.log.total_bytes = 0;
-    args.log.captured_bytes = 0;
-    args.log.elapsed_time = 0;
+    /* Initialize variables and PCAP */
+    args_init((&args), 45, 15);
+    log_init((&(args.log)));
+    psem_init(args.log.log_mutex);
+
     argp_parse(&argp, argc, argv, 0, 0, &args);
-    pthread_mutex_init(&(args.log.log_mutex), NULL);
 
     if (pcap_init(PCAP_CHAR_ENC_UTF_8, error_buff) == PCAP_ERROR)
     {
@@ -115,8 +94,8 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+    /* Initialize packet capture handle and file */
     handle = pcap_open_live(args.interface, ETH_FRAME_LEN, 1, 10, error_buff);
-
     if (handle == NULL)
     {
         fprintf(stderr, "Couldn't open interface %s\n", error_buff);
@@ -128,16 +107,22 @@ int main(int argc, char **argv)
         fprintf(stderr, "Device %s doesn't provide Ethernet headers - not supported", args.interface);
         return EXIT_FAILURE;
     }
-
     args.file = pcap_dump_open(handle, "../driver-mono.pcap");
 
+    /*
+        Parent - capture packets
+        Child - log capture statistics
+    */
     pthread_create(&logger, &attr, logging_thread, (void *)&(args.log));
     pcap_loop(handle, -1, selective_capping, (unsigned char *)&(args));
 
+    /* Close data and exit */
     pcap_close(handle);
     pcap_dump_flush(args.file);
     pcap_dump_close(args.file);
-    pthread_mutex_destroy(&(args.log.log_mutex));
+    pthread_attr_destroy(&attr);
+
+    psem_destroy(args.log.log_mutex);
 
     return EXIT_SUCCESS;
 }
