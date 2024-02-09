@@ -86,10 +86,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     if (pcap_lookupnet(t_args.args.interface, &net, &mask, error_buff) == -1)
-    {
-        fprintf(stderr, "[Error:Interface] Can't get netmask for %s\n", t_args.args.interface);
-        return EXIT_FAILURE;
-    }
+        net = PCAP_NETMASK_UNKNOWN;
 
     /* Initialize packet capture handle and file */
     t_args.handle = pcap_open_live(t_args.args.interface, ETH_FRAME_LEN, 1, 10, error_buff);
