@@ -121,7 +121,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "[Error:Filter] %s: %s\n", filter_exp, pcap_geterr(handle));
         return EXIT_FAILURE;
     }
+#ifndef __SIMSTORAGE
     args.file = pcap_dump_open(handle, "../driver-mono.pcap");
+#endif
 
     /*
         Parent - capture packets
@@ -132,8 +134,10 @@ int main(int argc, char **argv)
 
     /* Close data and exit */
     pcap_close(handle);
+#ifndef __SIMSTORAGE
     pcap_dump_flush(args.file);
     pcap_dump_close(args.file);
+#endif
     pthread_attr_destroy(&attr);
 
     psem_destroy(args.log.log_mutex);

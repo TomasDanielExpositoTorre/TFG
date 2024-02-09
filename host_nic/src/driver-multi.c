@@ -109,7 +109,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "[Error:Filter] %s: %s\n", filter_exp, pcap_geterr(t_args.handle));
         return EXIT_FAILURE;
     }
+#ifndef __SIMSTORAGE
     t_args.args.file = pcap_dump_open(t_args.handle, "../driver-multi.pcap");
+#endif
 
     /*
         Parent - log capture statistics
@@ -132,8 +134,11 @@ int main(int argc, char **argv)
     free(threads);
     pcap_close(t_args.handle);
     pthread_attr_destroy(&attr);
+
+#ifndef __SIMSTORAGE
     pcap_dump_flush(t_args.args.file);
     pcap_dump_close(t_args.args.file);
+#endif
 
     psem_destroy(t_args.read_mutex);
     psem_destroy(t_args.write_mutex);
