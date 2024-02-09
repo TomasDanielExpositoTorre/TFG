@@ -45,6 +45,11 @@ int main(int argc, char **argv)
     sigset_t thread_mask;
     char error_buff[PCAP_ERRBUF_SIZE];
 
+    struct bpf_program fp;
+    char filter_exp[] = "tcp or udp";
+    bpf_u_int32 mask;
+    bpf_u_int32 net;
+
     /* Block SIGINT for all threads except master */
     set_mask(thread_mask, SIGINT);
 
@@ -80,6 +85,11 @@ int main(int argc, char **argv)
         fprintf(stderr, "%s\n", error_buff);
         return EXIT_FAILURE;
     }
+    if (pcap_lookupnet(t_args.args.interface, &net, &mask, error_buff) == -1)
+    {
+        fprintf(stderr, "[Error:Interface] Can't get netmask for %s\n", t_args.args.interface);
+        return EXIT_FAILURE;
+    }
 
     /* Initialize packet capture handle and file */
     t_args.handle = pcap_open_live(t_args.args.interface, ETH_FRAME_LEN, 1, 10, error_buff);
@@ -89,10 +99,14 @@ int main(int argc, char **argv)
         fprintf(stderr, "Couldn't open interface %s\n", error_buff);
         return EXIT_FAILURE;
     }
-
     if (pcap_datalink(t_args.handle) != DLT_EN10MB)
     {
         fprintf(stderr, "Device %s doesn't provide Ethernet headers - not supported.\n", t_args.args.interface);
+        return EXIT_FAILURE;
+    }
+    if (pcap_compile(t_args.handle, &fp, filter_exp, 0, net) || pcap_setfilter(t_args.handle, &fp))
+    {
+        fprintf(stderr, "[Error:Filter] %s: %s\n", filter_exp, pcap_geterr(t_args.handle));
         return EXIT_FAILURE;
     }
     t_args.args.file = pcap_dump_open(t_args.handle, "../driver-multi.pcap");
