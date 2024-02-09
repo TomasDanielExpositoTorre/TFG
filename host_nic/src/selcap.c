@@ -117,11 +117,12 @@ void capping_log(void *args)
     ThreadArguments *t_args = (ThreadArguments *)args;
 
     pthread_mutex_lock(&(t_args->args.log.log_mutex));
-    fprintf(stdout, "[Logging] %d packets, %d captured bytes, %d total bytes\n",
-            t_args->args.log.packets,
-            t_args->args.log.captured_bytes,
-            t_args->args.log.total_bytes);
     t_args->args.log.elapsed_time += 5;
+    fprintf(stdout, "[Logging] (%ds) %.2f pps, %.2f bps (c), %.2f bps (t)\n",
+            t_args->args.log.elapsed_time,
+            (float)(t_args->args.log.packets) / t_args->args.log.elapsed_time ,
+            (t_args->args.log.captured_bytes * 8.0) / t_args->args.log.elapsed_time,
+            (t_args->args.log.total_bytes * 8.0) / t_args->args.log.elapsed_time);
     pthread_mutex_unlock(&(t_args->args.log.log_mutex));
 }
 

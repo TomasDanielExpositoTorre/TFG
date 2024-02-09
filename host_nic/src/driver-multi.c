@@ -94,6 +94,7 @@ int main(int argc, char **argv)
     t_args.args.log.packets = 0;
     t_args.args.log.total_bytes = 0;
     t_args.args.log.captured_bytes = 0;
+    t_args.args.log.elapsed_time = 0;
     argp_parse(&argp, argc, argv, 0, 0, &t_args);
 
     if (pcap_init(PCAP_CHAR_ENC_UTF_8, error_buff) == PCAP_ERROR)
@@ -121,7 +122,7 @@ int main(int argc, char **argv)
         pthread_create(threads + i, &attr, selective_capping_thread, (void *)&(t_args));
 
     sleep(5);
-
+    
     while(t_args.signaled == 0)
     {
         capping_log((void*)&(t_args));
