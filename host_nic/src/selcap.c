@@ -114,49 +114,47 @@ int optcap(Arguments args, const struct pcap_pkthdr *header, const unsigned char
 
 void capping_log(void *args)
 {
-    ThreadArguments *t_args = (ThreadArguments *)args;
+    LoggingInfo *log = (LoggingInfo *)args;
 
-    pthread_mutex_lock(&(t_args->args.log.log_mutex));
-    t_args->args.log.elapsed_time += 5;
+    pthread_mutex_lock(&(log->log_mutex));
+    log->elapsed_time += 5;
     fprintf(stdout, "[Logging] (%ds) %.2f pps, %.2f bps (c), %.2f bps (t)\n",
-            t_args->args.log.elapsed_time,
-            (float)(t_args->args.log.packets) / t_args->args.log.elapsed_time ,
-            (t_args->args.log.captured_bytes * 8.0) / t_args->args.log.elapsed_time,
-            (t_args->args.log.total_bytes * 8.0) / t_args->args.log.elapsed_time);
-    pthread_mutex_unlock(&(t_args->args.log.log_mutex));
+            log->elapsed_time,
+            (float)(log->packets) / log->elapsed_time,
+            (log->captured_bytes * 8.0) / log->elapsed_time,
+            (log->total_bytes * 8.0) / log->elapsed_time);
+    pthread_mutex_unlock(&(log->log_mutex));
 }
 
 void selective_capping(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet)
 {
-    Arguments _args = *(Arguments *)(args);
-    int slice = selcap(_args, header, packet);
+    Arguments *_args = (Arguments *)(args);
+
+#ifndef OPTIMIZED
+    int slice = selcap(*_args, header, packet);
+#else
+    int slice = optcap(*_args, header, packet);
+#endif
 
     if (slice == NO_CAPPING)
     {
-        pcap_dump((unsigned char *)_args.file, header, packet);
+        pthread_mutex_lock(&(_args->log.log_mutex));
+        _args->log.packets++;
+        _args->log.captured_bytes += header->caplen;
+        _args->log.total_bytes += header->caplen;
+        pthread_mutex_unlock(&(_args->log.log_mutex));
+        pcap_dump((unsigned char *)_args->file, header, packet);
     }
     else if (slice > NO_CAPPING)
     {
+        pthread_mutex_lock(&(_args->log.log_mutex));
+        _args->log.packets++;
+        _args->log.captured_bytes += slice;
+        _args->log.total_bytes += header->caplen;
+        pthread_mutex_unlock(&(_args->log.log_mutex));
         struct pcap_pkthdr *h = (struct pcap_pkthdr *)header;
         h->caplen = slice;
-        pcap_dump((unsigned char *)_args.file, h, packet);
-    }
-}
-
-void optimized_capping(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet)
-{
-    Arguments _args = *(Arguments *)(args);
-    int slice = optcap(_args, header, packet);
-
-    if (slice == NO_CAPPING)
-    {
-        pcap_dump((unsigned char *)_args.file, header, packet);
-    }
-    else if (slice > NO_CAPPING)
-    {
-        struct pcap_pkthdr *h = (struct pcap_pkthdr *)header;
-        h->caplen = slice;
-        pcap_dump((unsigned char *)_args.file, h, packet);
+        pcap_dump((unsigned char *)_args->file, h, packet);
     }
 }
 
@@ -174,7 +172,11 @@ void *selective_capping_thread(void *args)
         packet = pcap_next(t_args->handle, &header);
         pthread_mutex_unlock(&(t_args->read_mutex));
 
+#ifndef OPTIMIZED
         slice = selcap(_args, &header, packet);
+#else
+        slice = optcap(_args, &header, packet);
+#endif
 
         if (slice == NO_CAPPING)
         {
@@ -196,40 +198,6 @@ void *selective_capping_thread(void *args)
             t_args->args.log.total_bytes += header.caplen;
             pthread_mutex_unlock(&(t_args->args.log.log_mutex));
 
-            pthread_mutex_lock(&(t_args->write_mutex));
-            header.caplen = slice;
-            pcap_dump((unsigned char *)_args.file, &header, packet);
-            pthread_mutex_unlock(&(t_args->write_mutex));
-        }
-    }
-
-    return NULL;
-}
-
-void *optimized_capping_thread(void *args)
-{
-    ThreadArguments *t_args = (ThreadArguments *)args;
-    Arguments _args = t_args->args;
-    const unsigned char *packet;
-    struct pcap_pkthdr header;
-    int slice;
-
-    while (t_args->signaled == 0)
-    {
-        pthread_mutex_lock(&(t_args->read_mutex));
-        packet = pcap_next(t_args->handle, &header);
-        pthread_mutex_unlock(&(t_args->read_mutex));
-
-        slice = optcap(_args, &header, packet);
-
-        if (slice == NO_CAPPING)
-        {
-            pthread_mutex_lock(&(t_args->write_mutex));
-            pcap_dump((unsigned char *)_args.file, &header, packet);
-            pthread_mutex_unlock(&(t_args->write_mutex));
-        }
-        else if (slice > NO_CAPPING)
-        {
             pthread_mutex_lock(&(t_args->write_mutex));
             header.caplen = slice;
             pcap_dump((unsigned char *)_args.file, &header, packet);

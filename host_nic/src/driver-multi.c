@@ -122,10 +122,9 @@ int main(int argc, char **argv)
         pthread_create(threads + i, &attr, selective_capping_thread, (void *)&(t_args));
 
     sleep(5);
-    
-    while(t_args.signaled == 0)
+    while (t_args.signaled == 0)
     {
-        capping_log((void*)&(t_args));
+        capping_log((void *)&(t_args.args.log));
         sleep(5);
     }
 

@@ -1,9 +1,11 @@
+#define _GNU_SOURCE
 #include "selcap.h"
 #include "sighandling.h"
 #include <argp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <pthread.h>
 
 const char *argp_program_version = "HostNic Mono 1.0";
 const char *argp_program_bug_address = "<tomas.exposito@estudiante.uam.es>";
@@ -49,28 +51,63 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 
 static struct argp argp = {options, parse_opt, 0, NULL};
 static pcap_t *handle;
+static volatile int signaled = 0;
 
 void sighandler(int signal)
 {
+    signaled = 1;
     pcap_breakloop(handle);
     printf("\nSIGNAL received, stopping packet capture...\n");
+}
+
+void *logging_thread(void *args)
+{
+    sleep(5);
+
+    while (signaled == 0)
+    {
+        capping_log(args);
+        sleep(5);
+    }
+
+    return NULL;
 }
 
 int main(int argc, char **argv)
 {
     Arguments args;
+    pthread_attr_t attr;
+    pthread_t logger;
+    sigset_t thread_mask;
     char error_buff[PCAP_ERRBUF_SIZE];
 
-    if (block_signal(SIGINT) | install_handler(SIGINT, sighandler) | unblock_signal(SIGINT))
+    set_mask(thread_mask, SIGINT);
+
+    if (block_signal(SIGINT) ||
+        install_handler(SIGINT, sighandler) ||
+        unblock_signal(SIGINT))
     {
         perror("sigaction");
+        return EXIT_FAILURE;
+    }
+
+    if (pthread_attr_init(&attr) ||
+        pthread_attr_setsigmask_np(&attr, &thread_mask) ||
+        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED))
+    {
+        fprintf(stderr, "Could not- initialize children threads.\n");
         return EXIT_FAILURE;
     }
 
     args.percentage = 45;
     args.threshold = 15;
     args.interface = NULL;
+    args.log.packets = 0;
+    args.log.total_bytes = 0;
+    args.log.captured_bytes = 0;
+    args.log.elapsed_time = 0;
     argp_parse(&argp, argc, argv, 0, 0, &args);
+    pthread_mutex_init(&(args.log.log_mutex), NULL);
 
     if (pcap_init(PCAP_CHAR_ENC_UTF_8, error_buff) == PCAP_ERROR)
     {
@@ -93,10 +130,14 @@ int main(int argc, char **argv)
     }
 
     args.file = pcap_dump_open(handle, "../driver-mono.pcap");
-    pcap_loop(handle, -1, optimized_capping, (unsigned char *)&(args));
-    
+
+    pthread_create(&logger, &attr, logging_thread, (void *)&(args.log));
+    pcap_loop(handle, -1, selective_capping, (unsigned char *)&(args));
+
     pcap_close(handle);
     pcap_dump_flush(args.file);
     pcap_dump_close(args.file);
+    pthread_mutex_destroy(&(args.log.log_mutex));
+
     return EXIT_SUCCESS;
 }
