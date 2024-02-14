@@ -10,6 +10,8 @@
 #define NO_CAPPING 0
 #define ERR_UNSUPPORTED -1
 #define ERR_ILL_FORMED -2
+#define TO_MS_VAL 10
+
 typedef struct __LoggingInfo__
 {
     pthread_mutex_t log_mutex;

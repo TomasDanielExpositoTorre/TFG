@@ -102,7 +102,7 @@ int main(int argc, char **argv)
         net = PCAP_NETMASK_UNKNOWN;
 
     /* Initialize packet capture handle and file */
-    handle = pcap_open_live(args.interface, ETH_FRAME_LEN, 1, 10, error_buff);
+    handle = pcap_open_live(args.interface, ETH_FRAME_LEN, 1, TO_MS_VAL, error_buff);
     if (handle == NULL)
     {
         fprintf(stderr, "[Error:Interface] Couldn't open %s\n", error_buff);

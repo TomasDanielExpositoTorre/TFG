@@ -11,20 +11,17 @@
  */
 int header_len(const unsigned char *packet, bpf_u_int32 caplen)
 {
-    int header_len = ETH_HLEN;
+    int header_len = 0;
     ETHeader *eth_header;
     IPHeader *ip_header;
     TCPHeader *tcp_header;
 
-    eth_header = (ETHeader *)packet;
-
     /* Skip over 802.1q tags */
-    while (ntohs(eth_header->ether_type) == ETHERTYPE_VLAN)
-    {
-        eth_header += VLAN_HLEN;
+    while (ntohs((unsigned short)*(packet + 12 + header_len)) == ETHERTYPE_VLAN)
         header_len += VLAN_HLEN;
-    }
-
+    
+    eth_header = (ETHeader*) (packet + header_len);
+    header_len += ETH_HLEN;
     /* Not IP, skipping packet... */
     if (ntohs(eth_header->ether_type) != ETHERTYPE_IP)
         return ERR_UNSUPPORTED;
