@@ -11,10 +11,12 @@
 #define ERR_UNSUPPORTED -1
 #define ERR_ILL_FORMED -2
 #define TO_MS_VAL 10
+#define PCAP_BUFSIZE 8192
 
 typedef struct __LoggingInfo__
 {
     pthread_mutex_t log_mutex;
+    int stored_bytes;
     int captured_bytes;
     int total_bytes;
     int packets;
@@ -38,17 +40,18 @@ typedef struct __ThreadArguments__
     short signaled;
 } ThreadArguments;
 
-#define log_write(log, capped, total)      \
-    pthread_mutex_lock(&(log->log_mutex)); \
-    log->packets++;                        \
-    log->captured_bytes += capped;         \
-    log->total_bytes += total;             \
+#define log_write(log, stored, capped, total)   \
+    pthread_mutex_lock(&(log->log_mutex));      \
+    log->packets++;                             \
+    log->stored_bytes += stored;                \
+    log->captured_bytes += capped;              \
+    log->total_bytes += total;                  \
     pthread_mutex_unlock(&(log->log_mutex))
 
 #define log_init(log)        \
     log->packets = 0;        \
-    log->total_bytes = 0;    \
-    log->captured_bytes = 0; \
+    log->captured_bytes = 0;    \
+    log->stored_bytes = 0; \
     log->elapsed_time = 0
 
 #define args_init(args, p, th) \

@@ -50,9 +50,10 @@ void capping_log(LoggingInfo * log)
 {
     pthread_mutex_lock(&(log->log_mutex));
     log->elapsed_time += 5;
-    fprintf(stdout, "[Logging] (%ds) %.2f pps, %.2f bps (c), %.2f bps (t)\n",
+    fprintf(stdout, "[Logging] (%ds) %.2f pps, %.2f bps (s), %.2f bps (c), %.2f bps (t)\n",
             log->elapsed_time,
             (float)(log->packets) / log->elapsed_time,
+            (log->stored_bytes * 8.0) / log->elapsed_time,
             (log->captured_bytes * 8.0) / log->elapsed_time,
             (log->total_bytes * 8.0) / log->elapsed_time);
     pthread_mutex_unlock(&(log->log_mutex));
@@ -135,14 +136,14 @@ void selective_capping(unsigned char *args, const struct pcap_pkthdr *header, co
 
     if (slice == NO_CAPPING)
     {
-        log_write((&(_args->log)), header->caplen, header->caplen);
+        log_write((&(_args->log)), header->caplen, header->caplen, header->len);
 #ifndef __SIMSTORAGE
         pcap_dump((unsigned char *)_args->file, header, packet);
 #endif
     }
     else if (slice > NO_CAPPING)
     {
-        log_write((&(_args->log)), slice, header->caplen);
+        log_write((&(_args->log)), slice, header->caplen, header->len);
 #ifndef __SIMSTORAGE
         struct pcap_pkthdr *h = (struct pcap_pkthdr *)header;
         h->caplen = slice;
@@ -173,7 +174,7 @@ void *selective_capping_thread(void *args)
 
         if (slice == NO_CAPPING)
         {
-            log_write((&(t_args->args.log)), header.caplen, header.caplen);
+            log_write((&(t_args->args.log)), header.caplen, header.caplen, header.len);
 #ifndef __SIMSTORAGE
             psem_down(t_args->write_mutex);
             pcap_dump((unsigned char *)_args.file, &header, packet);
@@ -182,7 +183,7 @@ void *selective_capping_thread(void *args)
         }
         else if (slice > NO_CAPPING)
         {
-            log_write((&(t_args->args.log)), slice, header.caplen);
+            log_write((&(t_args->args.log)), slice, header.caplen, header.len);
 #ifndef __SIMSTORAGE
             psem_down(t_args->write_mutex);
             header.caplen = slice;

@@ -89,7 +89,7 @@ int main(int argc, char **argv)
         net = PCAP_NETMASK_UNKNOWN;
 
     /* Initialize packet capture handle and file */
-    t_args.handle = pcap_open_live(t_args.args.interface, ETH_FRAME_LEN, 1, TO_MS_VAL, error_buff);
+    t_args.handle = pcap_open_live(t_args.args.interface, PCAP_BUFSIZE, 1, TO_MS_VAL, error_buff);
 
     if (t_args.handle == NULL)
     {
