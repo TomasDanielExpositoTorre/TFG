@@ -48,10 +48,14 @@ int header_len(const unsigned char *packet, bpf_u_int32 caplen)
 
 void capping_log(LoggingInfo * log)
 {
-    pthread_mutex_lock(&(log->log_mutex));
+    int hours, minutes;
     log->elapsed_time += 5;
-    fprintf(stdout, "[Logging] (%ds) %.2f pps, %.2f bps (s), %.2f bps (c), %.2f bps (t)\n",
-            log->elapsed_time,
+    minutes = log->elapsed_time / 60;
+    hours = minutes / 60;
+    
+    pthread_mutex_lock(&(log->log_mutex));
+    fprintf(stdout, "[Logging] (%dh,%dm,%ds)\t%.2f pps\t%.2f bps (s)\t%.2f bps (c)\t%.2f bps (t)\n",
+            hours, minutes % 60, log->elapsed_time % 60,
             (float)(log->packets) / log->elapsed_time,
             (log->stored_bytes * 8.0) / log->elapsed_time,
             (log->captured_bytes * 8.0) / log->elapsed_time,
