@@ -2,30 +2,38 @@
 #define SPC_MACROS_H
 #include "headers.h"
 
-#define TRY(condition, error_msg) \
-    if (condition)                \
+#define PIPELINE(__pipeline)     \
+    __pipeline->percentage = 40; \
+    __pipeline->runlen = 15;     \
+    __pipeline->kernel = VANILLA_PACKET_THREAD
+
+#define RTE_CHECK(cond, error_msg) \
+    if (cond)                      \
     rte_exit(EXIT_FAILURE, error_msg)
 
-#define VTRY(condition, error_msg, ...) \
-    if (condition)                      \
+#define RTE_ERRCHECK(stmt, error_msg, ...) \
+    ret = (stmt);                          \
+    if (ret < 0)                           \
     rte_exit(EXIT_FAILURE, error_msg, __VA_ARGS__)
 
-#define KARGS_INIT(args)   \
-    args->percentage = 40; \
-    args->runlen = 15;     \
-    args->ktype = VANILLA_PACKET_THREAD
+#define RTE_WAIT_WORKERS(id, ret)                                                                              \
+    for (id = rte_get_next_lcore(-1, 1, 0); id < RTE_MAX_LCORE && ret >= 0; id = rte_get_next_lcore(id, 1, 0)) \
+    {                                                                                                          \
+        ret = rte_eal_wait_lcore(id);                                                                          \
+        if (rte_eal_wait_lcore(id) < 0)                                                                        \
+            fprintf(stderr, "bad exit for coreid: %d\n", id);                                                  \
+    }
 
-#define RTE_LCORE_FOREACH_WORKER(i)        \
-    for (i = rte_get_next_lcore(-1, 1, 0); \
-         i < RTE_MAX_LCORE;                \
-         i = rte_get_next_lcore(i, 1, 0))
+/* Temporal macros */
+/* TODO replace with user arguments at the beginning of execution (update "pipeline" for args struct) */
 
 #define RXQUEUES 1
 #define TXQUEUES 1
 #define NIC_PORT 0
-#define GPU_ID 0                  /* Temporal macro */
-#define RTE_PKTBUF_DATAROOM 2048U /* Temporal macro */
-#define GPU_PAGE 65536U           /* Temporal macro */
-#define ELEMS 8192U               /* Temporal macro */
+
+#define GPU_ID 0
+#define RTE_PKTBUF_DATAROOM 2048U
+#define GPU_PAGE 65536U
+#define ELEMS 8192U
 
 #endif
