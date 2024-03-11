@@ -1,30 +1,30 @@
-#include "parser.h"
+#include "headers.h"
 
 error_t parse_opt(int key, char *arg, struct argp_state *state)
 {
-    pipeline *p = (pipeline *)state->input;
+    struct kernel_args *args = (struct kernel_args *)state->input;
 
     switch (key)
     {
     case 'p':
-        p->percentage = atoi(arg);
-        if (p->percentage <= 0 || p->percentage > 100)
+        args->ascii_percentage = atoi(arg);
+        if (args->ascii_percentage <= 0 || args->ascii_percentage > 100)
         {
             fprintf(stderr, "no\n");
             exit(EXIT_FAILURE);
         }
         break;
     case 'r':
-        p->runlen = atoi(arg);
-        if (p->runlen <= 0)
+        args->ascii_runlen = atoi(arg);
+        if (args->ascii_runlen <= 0)
         {
             fprintf(stderr, "no\n");
             exit(EXIT_FAILURE);
         }
         break;
     case 'k':
-        p->kernel = atoi(arg);
-        if (p->kernel < VANILLA_PACKET_THREAD || p->kernel > COERCIVE_PACKET_WARP)
+        args->kernel = atoi(arg);
+        if (args->kernel < VANILLA_CAPPING_THREAD || args->kernel > COERCIVE_CAPPING_WARP)
         {
             fprintf(stderr, "no\n");
             exit(EXIT_FAILURE);

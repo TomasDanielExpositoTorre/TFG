@@ -1,6 +1,8 @@
 #include "headers.h"
-int tx_core(void *arg)
+
+int tx_core(void *args)
 {
-    printf("Hello mars!\n");
+    GpuHostNicShmem* shmem = (GpuHostNicShmem*) args;
+    printf("[TX Core] Exiting...\n");
     return 0;
 }

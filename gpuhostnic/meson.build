@@ -5,4 +5,4 @@ deps = [dependency('cuda', version: '>= 11-8'), dependency('libdpdk')]
 includir = include_directories('include')
 add_project_arguments('-Wno-deprecated-declarations', language: 'cpp')
 
-executable('gpu-hostnic', sources, dependencies: deps, include_directories: includir)
+executable('gpu-hostnic', sources, kernel, dependencies: deps, include_directories: includir)

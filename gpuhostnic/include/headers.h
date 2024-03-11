@@ -34,7 +34,8 @@
 
 /* =====================    More Headers    ===================== */
 #include "cuda_headers.h"
-#include "parser.h"
+#include "gpuhostnic_shmem.h"
 #include "macros.h"
-#include "cores.h"
+#include "utils.h"
+
 #endif

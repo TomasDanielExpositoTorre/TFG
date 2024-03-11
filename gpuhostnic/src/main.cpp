@@ -8,9 +8,9 @@ const char *argp_program_version = "Gpu HostNic 1.0";
 const char *argp_program_bug_address = "<tomas.exposito@estudiante.uam.es>";
 
 static struct argp_option options[] = {
-    {"percentage", 'p', "value", 0, "Interface used to capture packets."},
-    {"runlen", 'r', "size", 0, "Interface used to capture packets."},
-    {"kernel", 'k', "type", 0, "Interface used to capture packets."},
+    {"percentage", 'p', "value", 0, "Value for ascii percentage detection scheme."},
+    {"runlen", 'r', "size", 0, "Value for ascii run detection scheme."},
+    {"kernel", 'k', "type", 0, "Kernel used to process packets."},
     {0}};
 
 static struct argp argp = {options, parse_opt, 0, NULL};
@@ -55,7 +55,7 @@ int main(int argc, char **argv)
     int ret = 0, id = 0;
     struct rte_eth_dev_info dev_info;
     struct rte_gpu_info gpu_info;
-    pipeline pip;
+    struct kernel_args args;
     uint16_t nb_rxd = 1024U, nb_txd = 1024U;
     uint8_t socket_id;
 
@@ -66,10 +66,13 @@ int main(int argc, char **argv)
     RTE_CHECK((ret = rte_eal_init(argc, argv)) < 0, "Invalid EAL arguments\n");
     argc -= ret;
     argv += ret;
-
-    PIPELINE((&pip));
-    argp_parse(&argp, argc, argv, 0, 0, &pip);
-
+    
+    args.ascii_runlen = 15;
+    args.ascii_percentage = 45;
+    args.kernel = VANILLA_CAPPING_THREAD;
+    argp_parse(&argp, argc, argv, 0, 0, &args);
+    GpuHostNicShmem shmem = GpuHostNicShmem(args);
+    
     /* =======================     Device Setup     ======================= */
     cudaSetDevice(GPU_ID);
     cudaFree(0);
@@ -137,10 +140,10 @@ int main(int argc, char **argv)
 
     /* =======================      Main (real_)     ======================= */
     id = rte_get_next_lcore(id, 1, 0);
-    rte_eal_remote_launch(tx_core, (void *)0, id);
+    rte_eal_remote_launch(tx_core, (void *)&(shmem), id);
 
     id = rte_get_next_lcore(id, 1, 0);
-    rte_eal_remote_launch(rx_core, (void *)0, id);
+    rte_eal_remote_launch(rx_core, (void *)&(shmem), id);
 
     RTE_WAIT_WORKERS(id, ret);
 
