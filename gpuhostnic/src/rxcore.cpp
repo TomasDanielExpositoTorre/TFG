@@ -9,10 +9,11 @@ int rx_core(void *args)
     printf("[RX CORE] Starting...\n");
     cudaSetDevice(GPU_ID);
 
+    /* TODO measure some stuff for logging */
     while (0) // "While not exited"
     {
         i = 0;
-        if (shmem->list_free() == false)
+        if (shmem->list_iswritable() == false)
         {
             fprintf(stderr, "Communication list is not free\n");
             shmem->quit = true;

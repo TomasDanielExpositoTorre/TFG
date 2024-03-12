@@ -4,7 +4,7 @@ GpuHostNicShmem::GpuHostNicShmem(struct kernel_args _args)
 {
     cudaError_t ret;
     args = _args;
-    rxi = wxi = 0;
+    rxi = dxi = 0;
     quit = 0;
     size = 1024U;
 
@@ -25,11 +25,18 @@ GpuHostNicShmem::~GpuHostNicShmem()
     rte_gpu_comm_destroy_list(comm_list, BURST_ELEMS);
 }
 
-bool GpuHostNicShmem::list_free()
+bool GpuHostNicShmem::list_iswritable()
 {
     enum rte_gpu_comm_list_status s;
     int ret = rte_gpu_comm_get_status(&comm_list[rxi], &s);
     return ret == 0 && s == RTE_GPU_COMM_LIST_FREE;
+}
+
+bool GpuHostNicShmem::list_isreadable(int *ret)
+{
+    enum rte_gpu_comm_list_status s;
+    *ret = rte_gpu_comm_get_status(&comm_list[dxi], &s);
+    return s == RTE_GPU_COMM_LIST_DONE;
 }
 
 bool GpuHostNicShmem::list_push(rte_mbuf **packets, int mbufsize)
@@ -41,6 +48,12 @@ void GpuHostNicShmem::list_process(int blocks, int threads)
 {
     launch_kernel(&(comm_list[rxi]), blocks, threads, stream, args);
     rxi = (rxi + 1) % size;
+}
+
+void GpuHostNicShmem::list_pop()
+{
+    rte_gpu_comm_cleanup_list(&(comm_list[dxi]));
+    dxi = (dxi + 1) % size;
 }
 
 void GpuHostNicShmem::shmem_register(struct rte_pktmbuf_extmem *ext_mem,
