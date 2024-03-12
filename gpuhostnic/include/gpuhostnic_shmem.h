@@ -16,6 +16,13 @@ public:
 
     GpuHostNicShmem(struct kernel_args _args);
     ~GpuHostNicShmem();
+
+    static void shmem_register(struct rte_pktmbuf_extmem *ext_mem,
+                               struct rte_eth_dev_info *dev_info,
+                               int gpu_id);
+    static void shmem_unregister(struct rte_pktmbuf_extmem *ext_mem,
+                               struct rte_eth_dev_info *dev_info,
+                               int gpu_id, int port_id);
     bool list_free();
     bool list_push(rte_mbuf **packets, int mbufsize);
     void list_process(int blocks, int threads);

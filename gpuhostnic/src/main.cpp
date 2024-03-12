@@ -71,11 +71,12 @@ int main(int argc, char **argv)
     args.ascii_percentage = 45;
     args.kernel = VANILLA_CAPPING_THREAD;
     argp_parse(&argp, argc, argv, 0, 0, &args);
-    GpuHostNicShmem shmem = GpuHostNicShmem(args);
     
     /* =======================     Device Setup     ======================= */
+
     cudaSetDevice(GPU_ID);
     cudaFree(0);
+    GpuHostNicShmem shmem = GpuHostNicShmem(args);
 
     /* Trust the user to send -a NIC-ADDR -a GPU-ADDR */
     RTE_CHECK(rte_eth_dev_count_avail() == 0, "No Ethernet ports found\n");
@@ -83,33 +84,19 @@ int main(int argc, char **argv)
     RTE_CHECK(rte_eth_dev_info_get(NIC_PORT, &dev_info), "Failed to get device info for port 0\n");
     RTE_CHECK(rte_gpu_info_get(GPU_ID, &gpu_info), "Failed to get gpu info\n");
 
-    printf("\tGPU ID %d\n\t\tparent ID %d GPU Bus ID %s NUMA node %d Tot memory %.02f MB, Tot processors %d\n",
-           gpu_info.dev_id,
-           gpu_info.parent,
-           gpu_info.name,
-           gpu_info.numa_node,
-           (((float)gpu_info.total_memory) / (float)1024) / (float)1024,
-           gpu_info.processor_count);
-
     /* =======================  Mempool Allocation  ======================= */
 
-    /* For now, alloc buffer on CPU and share to GPU */
     ext_mem.elt_size = RTE_PKTBUF_DATAROOM + RTE_PKTMBUF_HEADROOM;        // packet size
     ext_mem.buf_len = RTE_ALIGN_CEIL(ELEMS * ext_mem.elt_size, GPU_PAGE); // buffer size
 
-    RTE_CHECK((ext_mem.buf_ptr = rte_malloc("extmem", ext_mem.buf_len, 0)) == NULL,
-              "Could not allocate CPU DPDK memory\n");
-    RTE_ERRCHECK(rte_gpu_mem_register(0, ext_mem.buf_len, ext_mem.buf_ptr),
-            "Unable to gpudev register addr 0x%p\n", ext_mem.buf_ptr);
-    RTE_CHECK(rte_dev_dma_map(dev_info.device, ext_mem.buf_ptr, ext_mem.buf_iova, ext_mem.buf_len),
-              "Could not DMA map EXT memory\n");
-
+    GpuHostNicShmem::shmem_register(&(ext_mem), &(dev_info), GPU_ID);
     mpool_payload = rte_pktmbuf_pool_create_extbuf("payload_mpool", ELEMS,
                                                    0, 0, ext_mem.elt_size,
                                                    rte_socket_id(), &ext_mem, 1);
     RTE_CHECK(mpool_payload == NULL, "Could not create EXT memory mempool\n");
 
     /* =======================     Port 0 Setup     ======================= */
+
     RTE_ERRCHECK(rte_eth_dev_configure(NIC_PORT, RXQUEUES, TXQUEUES, &conf_eth_port),
             "Cannot configure device: err=%d, port=0\n", ret);
     RTE_ERRCHECK(rte_eth_dev_adjust_nb_rx_tx_desc(NIC_PORT, &nb_rxd, &nb_txd),
@@ -129,16 +116,8 @@ int main(int argc, char **argv)
     RTE_ERRCHECK(rte_eth_dev_start(NIC_PORT),
         "rte_eth_tx_queue_setup: err=%d, port=0\n", ret);
     rte_eth_promiscuous_enable(NIC_PORT);
-    printf("Port %d, MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n\n",
-           NIC_PORT,
-           conf_ports_eth_addr[NIC_PORT].addr_bytes[0],
-           conf_ports_eth_addr[NIC_PORT].addr_bytes[1],
-           conf_ports_eth_addr[NIC_PORT].addr_bytes[2],
-           conf_ports_eth_addr[NIC_PORT].addr_bytes[3],
-           conf_ports_eth_addr[NIC_PORT].addr_bytes[4],
-           conf_ports_eth_addr[NIC_PORT].addr_bytes[5]);
 
-    /* =======================      Main (real_)     ======================= */
+    /* =======================         Main         ======================= */
     id = rte_get_next_lcore(id, 1, 0);
     rte_eal_remote_launch(tx_core, (void *)&(shmem), id);
 
@@ -148,12 +127,7 @@ int main(int argc, char **argv)
     RTE_WAIT_WORKERS(id, ret);
 
     /* =======================       Cleaning       ======================= */
-    rte_eth_dev_stop(NIC_PORT);
-    rte_eth_dev_close(NIC_PORT);
-    RTE_CHECK(rte_dev_dma_unmap(dev_info.device, ext_mem.buf_ptr, ext_mem.buf_iova, ext_mem.buf_len),
-        "Could not DMA unmap EXT memory\n");
-    RTE_ERRCHECK(rte_gpu_mem_unregister(0, ext_mem.buf_ptr),
-        "rte_gpu_mem_unregister returned error %d\n", ret);
+    GpuHostNicShmem::shmem_unregister(&(ext_mem), &(dev_info), GPU_ID, NIC_PORT);
 
     return EXIT_SUCCESS;
 }

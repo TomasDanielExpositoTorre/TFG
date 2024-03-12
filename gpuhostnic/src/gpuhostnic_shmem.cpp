@@ -7,7 +7,8 @@ GpuHostNicShmem::GpuHostNicShmem(struct kernel_args _args)
     rxi = wxi = 0;
     quit = 0;
     size = 1024U;
-    
+
+    /* Esto hasta que no importe GDRCopy como que revienta */
     if ((comm_list = rte_gpu_comm_create_list(GPU_ID, size)) == NULL)
         rte_panic("rte_gpu_comm_create_list");
 
@@ -40,4 +41,32 @@ void GpuHostNicShmem::list_process(int blocks, int threads)
 {
     launch_kernel(&(comm_list[rxi]), blocks, threads, stream, args);
     rxi = (rxi + 1) % size;
+}
+
+void GpuHostNicShmem::shmem_register(struct rte_pktmbuf_extmem *ext_mem,
+                                     struct rte_eth_dev_info *dev_info,
+                                     int gpu_id)
+{
+    ext_mem->buf_ptr = rte_malloc("extmem", ext_mem->buf_len, 0);
+
+    if (ext_mem->buf_ptr == NULL)
+        rte_exit(EXIT_FAILURE, "Could not allocate CPU DPDK memory\n");
+    if (rte_gpu_mem_register(gpu_id, ext_mem->buf_len, ext_mem->buf_ptr) < 0)
+        rte_exit(EXIT_FAILURE, "Unable to gpudev register addr 0x%p\n", ext_mem->buf_ptr);
+    if (rte_dev_dma_map(dev_info->device, ext_mem->buf_ptr, ext_mem->buf_iova, ext_mem->buf_len))
+        rte_exit(EXIT_FAILURE, "Could not DMA map EXT memory\n");
+}
+
+void GpuHostNicShmem::shmem_unregister(struct rte_pktmbuf_extmem *ext_mem,
+                                       struct rte_eth_dev_info *dev_info,
+                                       int gpu_id, int port_id)
+{
+    int ret = 0;
+    rte_eth_dev_stop(port_id);
+    rte_eth_dev_close(port_id);
+
+    if (rte_dev_dma_unmap(dev_info->device, ext_mem->buf_ptr, ext_mem->buf_iova, ext_mem->buf_len))
+        rte_exit(EXIT_FAILURE, "Could not DMA unmap EXT memory\n");
+    if ((ret = rte_gpu_mem_unregister(gpu_id, ext_mem->buf_ptr)) < 0)
+        rte_exit(EXIT_FAILURE, "rte_gpu_mem_unregister returned error %d\n", ret);
 }
