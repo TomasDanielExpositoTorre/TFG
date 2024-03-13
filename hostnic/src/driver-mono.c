@@ -1,11 +1,5 @@
 #define _GNU_SOURCE
-#include "selcap.h"
-#include "sighandling.h"
-#include <argp.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <pthread.h>
+#include "headers.h"
 
 const char *argp_program_version = "HostNic Mono 1.0";
 const char *argp_program_bug_address = "<tomas.exposito@estudiante.uam.es>";
@@ -16,7 +10,7 @@ static struct argp_option options[] = {
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state)
 {
-    Arguments *args = state->input;
+    struct arguments *args = state->input;
 
     switch (key)
     {
@@ -31,23 +25,23 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 
 static struct argp argp = {options, parse_opt, 0, NULL};
 static pcap_t *handle;
-static volatile int signaled = 0;
+static volatile int signaled = false;
 
 void sighandler(int signal)
 {
-    signaled = 1;
+    signaled = true;
     pcap_breakloop(handle);
     printf("\nSIGNAL received, stopping packet capture...\n");
 }
 
 void *logging_thread(void *args)
 {
-    LoggingInfo *log = (LoggingInfo *)args;
+    struct logging_info *log = (struct logging_info *)args;
     sleep(5);
 
-    while (signaled == 0)
+    while (signaled == false)
     {
-        capping_log(log);
+        write_log(log);
         sleep(5);
     }
 
@@ -56,11 +50,11 @@ void *logging_thread(void *args)
 
 int main(int argc, char **argv)
 {
-    Arguments args;
+    struct arguments args;
+    char error_buff[PCAP_ERRBUF_SIZE];
     pthread_attr_t attr;
     pthread_t logger;
     sigset_t thread_mask;
-    char error_buff[PCAP_ERRBUF_SIZE];
 
     struct bpf_program fp;
     char filter_exp[] = "tcp or udp";
@@ -82,7 +76,7 @@ int main(int argc, char **argv)
         pthread_attr_setsigmask_np(&attr, &thread_mask) ||
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED))
     {
-        fprintf(stderr, "Could not initialize children threads.\n");
+        fprintf(stderr, "Could not create logging thread mask.\n");
         return EXIT_FAILURE;
     }
 
@@ -118,6 +112,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "[Error:Filter] %s: %s\n", filter_exp, pcap_geterr(handle));
         return EXIT_FAILURE;
     }
+
 #ifndef __SIMSTORAGE
     args.file = pcap_dump_open(handle, "../driver-mono.pcap");
 #endif
@@ -127,15 +122,23 @@ int main(int argc, char **argv)
         Child - log capture statistics
     */
     pthread_create(&logger, &attr, logging_thread, (void *)&(args.log));
-    pcap_loop(handle, -1, selective_capping, (unsigned char *)&(args));
+    pcap_loop(handle, -1, spc_handler, (unsigned char *)&(args));
 
     /* Close data and exit */
+    fprintf(stdout, "[Results] (%dh,%dm,%ds)    %d packets    %d bits (stored)    %d bits (captured)    %d bits (total)\n",
+            args.log.elapsed_time / 3600, args.log.elapsed_time / 60, args.log.elapsed_time % 60,
+            args.log.packets,
+            args.log.stored_bytes * 8,
+            args.log.captured_bytes * 8,
+            args.log.total_bytes * 8);
+
     pcap_close(handle);
+    pthread_attr_destroy(&attr);
+
 #ifndef __SIMSTORAGE
     pcap_dump_flush(args.file);
     pcap_dump_close(args.file);
 #endif
-    pthread_attr_destroy(&attr);
 
     psem_destroy(args.log.log_mutex);
 

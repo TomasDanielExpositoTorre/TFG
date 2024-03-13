@@ -1,20 +1,19 @@
-#ifndef __NETWORK_HEADERS_H
-#define __NETWORK_HEADERS_H
+#ifndef SPC_NETWORK_HEADERS_H
+#define SPC_NETWORK_HEADERS_H
 
-#include "types.h"
-#include <pcap.h>
-#include <netinet/in.h>
-#include <net/ethernet.h>
+#include "headers.h"
 
-/* Ethernet Header Values */
-typedef struct
+/* =====================      Ethernet  Headers      ===================== */
+
+struct eth_header
 {
     unsigned char dst[ETH_ALEN], src[ETH_ALEN];
     unsigned short ether_type;
-} ETHeader;
+};
 
-/* IP Header Values */
-typedef struct
+/* =====================         IP  Headers         ===================== */
+
+struct ip_header
 {
     unsigned char vhl;
     unsigned char tos;
@@ -29,13 +28,14 @@ typedef struct
     unsigned char protocol;
     unsigned short checksum;
     struct in_addr src, dst;
-} IPHeader;
+};
 
 #define IP_HL(ip) ((ip->vhl) & 0x0F) * 4
 #define IP_V(ip) ((ip->vhl) >> 4)
 
-/* TCP Header Values */
-typedef struct
+/* =====================         TCP Headers         ===================== */
+
+struct tcp_header
 {
     unsigned short srcport, dstport;
     unsigned short seq, ack;
@@ -54,7 +54,7 @@ typedef struct
     unsigned short window;
     unsigned short checksum;
     unsigned short urgent;
-} TCPHeader;
+};
 
 /* Extra Values */
 #define VLAN_HLEN 4

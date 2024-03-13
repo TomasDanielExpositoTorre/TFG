@@ -1,11 +1,6 @@
 #define _GNU_SOURCE
-#include "selcap.h"
-#include "sighandling.h"
-#include <argp.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <pthread.h>
+#define NTHREADS 32
+#include "headers.h"
 
 const char *argp_program_version = "HostNic Multi 1.0";
 const char *argp_program_bug_address = "<tomas.exposito@estudiante.uam.es>";
@@ -16,12 +11,12 @@ static struct argp_option options[] = {
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state)
 {
-    ThreadArguments *t_args = state->input;
+    struct thread_arguments *targs = state->input;
 
     switch (key)
     {
     case 'i':
-        t_args->args.interface = arg;
+        targs->args.interface = arg;
         break;
     default:
         return ARGP_ERR_UNKNOWN;
@@ -30,18 +25,18 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
 }
 
 static struct argp argp = {options, parse_opt, 0, NULL};
-static ThreadArguments t_args;
+static struct thread_arguments targs;
 
 void sighandler(int signal)
 {
-    t_args.signaled = 1;
+    targs.signaled = true;
     printf("\nSIGNAL received, stopping packet capture...\n");
 }
 
 int main(int argc, char **argv)
 {
     pthread_attr_t attr;
-    pthread_t *threads;
+    pthread_t threads[NTHREADS];
     sigset_t thread_mask;
     char error_buff[PCAP_ERRBUF_SIZE];
 
@@ -68,46 +63,43 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    /* Initialize variables and PCAP */
-    if ((threads = (pthread_t *)malloc(NTHREADS * sizeof(threads[0]))) == NULL)
-        return EXIT_FAILURE;
+    args_init((&targs.args), 45, 15);
+    log_init((&(targs.args.log)));
+    psem_init(targs.read_mutex);
+    psem_init(targs.write_mutex);
+    psem_init(targs.args.log.log_mutex);
 
-    args_init((&t_args.args), 45, 15);
-    log_init((&(t_args.args.log)));
-    psem_init(t_args.read_mutex);
-    psem_init(t_args.write_mutex);
-    psem_init(t_args.args.log.log_mutex);
-
-    argp_parse(&argp, argc, argv, 0, 0, &t_args);
+    argp_parse(&argp, argc, argv, 0, 0, &targs);
 
     if (pcap_init(PCAP_CHAR_ENC_UTF_8, error_buff) == PCAP_ERROR)
     {
         fprintf(stderr, "%s\n", error_buff);
         return EXIT_FAILURE;
     }
-    if (pcap_lookupnet(t_args.args.interface, &net, &mask, error_buff) == -1)
+    if (pcap_lookupnet(targs.args.interface, &net, &mask, error_buff) == -1)
         net = PCAP_NETMASK_UNKNOWN;
 
     /* Initialize packet capture handle and file */
-    t_args.handle = pcap_open_live(t_args.args.interface, PCAP_BUFSIZE, 1, TO_MS_VAL, error_buff);
+    targs.handle = pcap_open_live(targs.args.interface, PCAP_BUFSIZE, 1, TO_MS_VAL, error_buff);
 
-    if (t_args.handle == NULL)
+    if (targs.handle == NULL)
     {
         fprintf(stderr, "Couldn't open interface %s\n", error_buff);
         return EXIT_FAILURE;
     }
-    if (pcap_datalink(t_args.handle) != DLT_EN10MB)
+    if (pcap_datalink(targs.handle) != DLT_EN10MB)
     {
-        fprintf(stderr, "Device %s doesn't provide Ethernet headers - not supported.\n", t_args.args.interface);
+        fprintf(stderr, "Device %s doesn't provide Ethernet headers - not supported.\n", targs.args.interface);
         return EXIT_FAILURE;
     }
-    if (pcap_compile(t_args.handle, &fp, filter_exp, 0, net) || pcap_setfilter(t_args.handle, &fp))
+    if (pcap_compile(targs.handle, &fp, filter_exp, 0, net) || pcap_setfilter(targs.handle, &fp))
     {
-        fprintf(stderr, "[Error:Filter] %s: %s\n", filter_exp, pcap_geterr(t_args.handle));
+        fprintf(stderr, "[Error:Filter] %s: %s\n", filter_exp, pcap_geterr(targs.handle));
         return EXIT_FAILURE;
     }
+
 #ifndef __SIMSTORAGE
-    t_args.args.file = pcap_dump_open(t_args.handle, "../driver-multi.pcap");
+    targs.args.file = pcap_dump_open(targs.handle, "../driver-multi.pcap");
 #endif
 
     /*
@@ -115,31 +107,37 @@ int main(int argc, char **argv)
         Children - capture packets
     */
     for (int i = 0; i < NTHREADS; i++)
-        pthread_create(threads + i, &attr, selective_capping_thread, (void *)&(t_args));
+        pthread_create(threads + i, &attr, spct_handler, (void *)&(targs));
 
     sleep(5);
-    while (t_args.signaled == 0)
+    while (targs.signaled == false)
     {
-        capping_log(&(t_args.args.log));
+        write_log(&(targs.args.log));
         sleep(5);
     }
 
     for (int i = 0; i < NTHREADS; i++)
         pthread_join(*(threads + i), NULL);
 
+    fprintf(stdout, "[Results] (%dh,%dm,%ds)    %d packets    %d bits (stored)    %d bits (captured)    %d bits (total)\n",
+            targs.args.log.elapsed_time / 3600, targs.args.log.elapsed_time / 60, targs.args.log.elapsed_time % 60,
+            targs.args.log.packets,
+            targs.args.log.stored_bytes * 8,
+            targs.args.log.captured_bytes * 8,
+            targs.args.log.total_bytes * 8);
+
     /* Close data and exit */
-    free(threads);
-    pcap_close(t_args.handle);
+    pcap_close(targs.handle);
     pthread_attr_destroy(&attr);
 
 #ifndef __SIMSTORAGE
-    pcap_dump_flush(t_args.args.file);
-    pcap_dump_close(t_args.args.file);
+    pcap_dump_flush(targs.args.file);
+    pcap_dump_close(targs.args.file);
 #endif
 
-    psem_destroy(t_args.read_mutex);
-    psem_destroy(t_args.write_mutex);
-    psem_destroy(t_args.args.log.log_mutex);
+    psem_destroy(targs.read_mutex);
+    psem_destroy(targs.write_mutex);
+    psem_destroy(targs.args.log.log_mutex);
 
     return EXIT_SUCCESS;
 }

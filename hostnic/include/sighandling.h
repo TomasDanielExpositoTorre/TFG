@@ -1,12 +1,11 @@
-#ifndef __SIGHANDLING_H
-#define __SIGHANDLING_H
+#ifndef SPC_SIGHANDLING_H
+#define SPC_SIGHANDLING_H
 
 #define _GNU_SOURCE
-#include <features.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include "types.h"
+#include "headers.h"
+
+#define OK 0
+#define ERROR -1
 
 /**
  * @brief Fills mask SIGMASK with all signals but SIG_NO.
@@ -24,7 +23,7 @@
 
 /**
  * Blocks all signals for the current process.
- * 
+ *
  * @return On success, 0 is returned.  On failure, -1 is returned.
  */
 int block_all_signals();
