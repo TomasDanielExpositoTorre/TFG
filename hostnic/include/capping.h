@@ -37,13 +37,15 @@ struct arguments
     unsigned short ascii_percentage;
     unsigned short ascii_runlen;
     char *interface;
+    char *output;
     pcap_dumper_t *file;
 };
 
 #define args_init(args, p, rl)  \
     args->ascii_percentage = p; \
     args->ascii_runlen = rl;    \
-    args->interface = NULL
+    args->interface = NULL;     \
+    args->output = NULL
 
 /* =====================       Threads  Struct       ===================== */
 

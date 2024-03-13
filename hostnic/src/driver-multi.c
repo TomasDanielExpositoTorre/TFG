@@ -6,7 +6,8 @@ const char *argp_program_version = "HostNic Multi 1.0";
 const char *argp_program_bug_address = "<tomas.exposito@estudiante.uam.es>";
 
 static struct argp_option options[] = {
-    {"if", 'i', "name", 0, "Interface used to capture packets."},
+    {"interface", 'i', "name", 0, "Interface used to capture packets."},
+    {"output", 'o', "path", 0, "Path where captured packets will be dumped."},
     {0}};
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state)
@@ -17,6 +18,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
     {
     case 'i':
         targs->args.interface = arg;
+        break;
+    case 'o':
+        targs->args.output = arg;
         break;
     default:
         return ARGP_ERR_UNKNOWN;
@@ -90,16 +94,24 @@ int main(int argc, char **argv)
     if (pcap_datalink(targs.handle) != DLT_EN10MB)
     {
         fprintf(stderr, "Device %s doesn't provide Ethernet headers - not supported.\n", targs.args.interface);
+        pcap_close(targs.handle);
         return EXIT_FAILURE;
     }
     if (pcap_compile(targs.handle, &fp, filter_exp, 0, net) || pcap_setfilter(targs.handle, &fp))
     {
         fprintf(stderr, "[Error:Filter] %s: %s\n", filter_exp, pcap_geterr(targs.handle));
+        pcap_close(targs.handle);
         return EXIT_FAILURE;
     }
 
 #ifndef __SIMSTORAGE
-    targs.args.file = pcap_dump_open(targs.handle, "../driver-multi.pcap");
+    if (targs.args.output == NULL)
+    {
+        fprintf(stderr, "[Error:Dumping] Please provide a file path to dump captured packets\n");
+        pcap_close(targs.handle);
+        return EXIT_FAILURE;
+    }
+    targs.args.file = pcap_dump_open(targs.handle, targs.args.output);
 #endif
 
     /*

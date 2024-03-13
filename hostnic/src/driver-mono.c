@@ -5,7 +5,8 @@ const char *argp_program_version = "HostNic Mono 1.0";
 const char *argp_program_bug_address = "<tomas.exposito@estudiante.uam.es>";
 
 static struct argp_option options[] = {
-    {"if", 'i', "name", 0, "Interface used to capture packets."},
+    {"interface", 'i', "name", 0, "Interface used to capture packets."},
+    {"output", 'o', "path", 0, "Path where captured packets will be dumped."},
     {0}};
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state)
@@ -16,6 +17,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
     {
     case 'i':
         args->interface = arg;
+        break;
+    case 'o':
+        args->output = arg;
         break;
     default:
         return ARGP_ERR_UNKNOWN;
@@ -105,16 +109,24 @@ int main(int argc, char **argv)
     if (pcap_datalink(handle) != DLT_EN10MB)
     {
         fprintf(stderr, "[Error:Interface] %s doesn't provide Ethernet headers\n", args.interface);
+        pcap_close(handle);
         return EXIT_FAILURE;
     }
     if (pcap_compile(handle, &fp, filter_exp, 0, net) || pcap_setfilter(handle, &fp))
     {
         fprintf(stderr, "[Error:Filter] %s: %s\n", filter_exp, pcap_geterr(handle));
+        pcap_close(handle);
         return EXIT_FAILURE;
     }
 
 #ifndef __SIMSTORAGE
-    args.file = pcap_dump_open(handle, "../driver-mono.pcap");
+    if (args.output == NULL)
+    {
+        fprintf(stderr, "[Error:Dumping] Please provide a file path to dump captured packets\n");
+        pcap_close(handle);
+        return EXIT_FAILURE;
+    }
+    args.file = pcap_dump_open(handle, args.output);
 #endif
 
     /*
