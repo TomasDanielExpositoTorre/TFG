@@ -206,7 +206,7 @@ void *spct_handler(void *args)
         {
             log_update((&(targs->args.log)), slice, header.caplen, header.len);
         }
-    }
 #endif
-        return NULL;
     }
+        return NULL;
+}
