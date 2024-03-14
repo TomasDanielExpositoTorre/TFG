@@ -129,7 +129,6 @@ int optimized_capping(struct arguments args, const struct pcap_pkthdr *header, c
 void spc_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet)
 {
     struct arguments *_args = (struct arguments *)(args);
-
 #ifndef __OPTIMIZED
     int slice = vanilla_capping(*_args, header, packet);
 #else

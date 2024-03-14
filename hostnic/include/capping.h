@@ -8,10 +8,10 @@
 struct logging_info
 {
     pthread_mutex_t log_mutex;
-    unsigned int stored_bytes;
-    unsigned int captured_bytes;
-    unsigned int total_bytes;
-    unsigned int packets;
+    long unsigned int stored_bytes;
+    long unsigned int captured_bytes;
+    long unsigned int total_bytes;
+    long unsigned int packets;
     unsigned int elapsed_time;
 };
 
@@ -38,12 +38,14 @@ struct arguments
     unsigned short ascii_runlen;
     char *interface;
     char *output;
+    char *input;
     pcap_dumper_t *file;
 };
 
 #define args_init(args, p, rl)  \
     args->ascii_percentage = p; \
     args->ascii_runlen = rl;    \
+    args->input = NULL;       \
     args->interface = NULL;     \
     args->output = NULL
 
