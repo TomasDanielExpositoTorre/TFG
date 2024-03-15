@@ -1,9 +1,7 @@
 #ifndef SPC_PARSER_H
 #define SPC_PARSER_H
 
-#include <stdlib.h>
-#include <argp.h>
-#include "cuda_headers.h"
+#include "headers.h"
 
 /* =====================    RX/TX  Cores    ===================== */
 

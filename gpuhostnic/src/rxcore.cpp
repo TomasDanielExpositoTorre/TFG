@@ -2,32 +2,31 @@
 
 int rx_core(void *args)
 {
-    GpuHostNicShmem *shmem = (GpuHostNicShmem *)args;
+    GpuHostNicShmem *shm = (GpuHostNicShmem *)args;
     struct rte_mbuf *packets[1024];
     int i;
 
     printf("[RX CORE] Starting...\n");
     cudaSetDevice(GPU_ID);
 
-    /* TODO measure some stuff for logging */
-    while (0) // "While not exited"
+    while (not_quit(shm))
     {
         i = 0;
-        if (shmem->list_iswritable() == false)
+        if (shm->list_iswritable() == false)
         {
-            fprintf(stderr, "Communication list is not free\n");
-            shmem->quit = true;
+            fprintf(stderr, "Communication list not free, quitting...\n");
+            shm->self_quit = true;
             return EXIT_FAILURE;
         }
 
-        while (i < 1020) // "While buffer is not full"
+        while (i < 1016 && not_quit(shm))
             i += rte_eth_rx_burst(NIC_PORT, 0, &(packets[i]), (1024 - i));
 
-        if (0) // "If exited"
+        if (has_quit(shm))
             break;
 
-        shmem->list_push(packets, i);
-        shmem->list_process(1, 1); // change ceil(i / 32) blocks, 32 threads 
+        shm->list_push(packets, i);
+        shm->list_process(CEIL(i, 32), 32);
     }
     return EXIT_SUCCESS;
 }

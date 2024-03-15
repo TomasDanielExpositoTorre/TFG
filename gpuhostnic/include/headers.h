@@ -32,8 +32,14 @@
 #include <rte_latencystats.h>
 #include <rte_gpudev.h>
 
+/* =====================    CUDA Headers    ===================== */
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cuda_runtime_api.h>
+#include <cuda_profiler_api.h>
+
 /* =====================    More Headers    ===================== */
-#include "cuda_headers.h"
+#include "kernel.h"
 #include "gpuhostnic_shmem.h"
 #include "macros.h"
 #include "utils.h"

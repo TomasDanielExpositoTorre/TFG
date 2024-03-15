@@ -1,10 +1,7 @@
 #ifndef SPC_CUDA_H
 #define SPC_CUDA_H
 
-#include <cuda.h>
-#include <cuda_runtime.h>
-#include <cuda_runtime_api.h>
-#include <cuda_profiler_api.h>
+#include "headers.h"
 
 /**
  * TODO document

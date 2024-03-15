@@ -2,6 +2,9 @@
 #define SPC_GCPUNIC_H
 #include "headers.h"
 
+#define has_quit(shm) shm->self_quit || shm->force_quit
+#define not_quit(shm) !shm->self_quit && !shm->force_quit
+
 class GpuHostNicShmem
 {
 private:
@@ -12,7 +15,8 @@ private:
 public:
     struct kernel_args args;
     cudaStream_t stream;
-    volatile bool quit;
+    volatile bool self_quit;
+    static volatile bool force_quit;
 
     GpuHostNicShmem(struct kernel_args _args);
     ~GpuHostNicShmem();
@@ -21,8 +25,8 @@ public:
                                struct rte_eth_dev_info *dev_info,
                                int gpu_id);
     static void shmem_unregister(struct rte_pktmbuf_extmem *ext_mem,
-                               struct rte_eth_dev_info *dev_info,
-                               int gpu_id, int port_id);
+                                 struct rte_eth_dev_info *dev_info,
+                                 int gpu_id, int port_id);
     bool list_iswritable();
     bool list_isreadable(int *ret);
     bool list_push(rte_mbuf **packets, int mbufsize);

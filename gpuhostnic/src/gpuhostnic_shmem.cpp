@@ -5,7 +5,7 @@ GpuHostNicShmem::GpuHostNicShmem(struct kernel_args _args)
     cudaError_t ret;
     args = _args;
     rxi = dxi = 0;
-    quit = 0;
+    self_quit = 0;
     size = 1024U;
 
     /* Esto hasta que no importe GDRCopy como que revienta */
@@ -22,7 +22,7 @@ GpuHostNicShmem::GpuHostNicShmem(struct kernel_args _args)
 GpuHostNicShmem::~GpuHostNicShmem()
 {
     cudaStreamDestroy(stream);
-    rte_gpu_comm_destroy_list(comm_list, BURST_ELEMS);
+    rte_gpu_comm_destroy_list(comm_list, size);
 }
 
 bool GpuHostNicShmem::list_iswritable()

@@ -2,24 +2,27 @@
 
 int tx_core(void *args)
 {
-    GpuHostNicShmem *shmem = (GpuHostNicShmem *)args;
+    GpuHostNicShmem *shm = (GpuHostNicShmem *)args;
     int ret = 0;
-    printf("[TX Core] Starting...\n");
+    printf("[DX CORE] Starting...\n");
+
     cudaSetDevice(GPU_ID);
 
-    /* TODO measure some stuff */
-    while (0) // "While not quit"
+    while (not_quit(shm))
     {
-        while (shmem->list_isreadable(&ret) == false)
+        while (shm->list_isreadable(&ret) == false)
             if (ret)
             {
                 fprintf(stderr, "rte_gpu_comm_get_status error, killing the app...\n");
-                shmem->quit = true;
+                GpuHostNicShmem::force_quit = true;
                 return EXIT_FAILURE;
             }
-
-        /* Write packets in .pcap format (pcapdump_t??)*/
-        shmem->list_pop();
+        // todo write in pcap format
+        // for each packet:
+        //  flag = size & 1
+        //  size >> 1
+        //  dump(caplen=flagged ? MAX_HLEN : size, len=size)
+        // list.status = FREE
     }
     return EXIT_SUCCESS;
 }

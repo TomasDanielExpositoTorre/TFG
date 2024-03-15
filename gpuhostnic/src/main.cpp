@@ -3,6 +3,8 @@
 /* ========================================================================= */
 /* =======================        ARGP CONFIG        ======================= */
 /* ========================================================================= */
+GpuHostNicShmem *shmem;
+volatile bool GpuHostNicShmem::force_quit = false;
 
 const char *argp_program_version = "Gpu HostNic 1.0";
 const char *argp_program_bug_address = "<tomas.exposito@estudiante.uam.es>";
@@ -43,12 +45,14 @@ static struct rte_eth_conf conf_eth_port = {
 void sighandler(int signal)
 {
     printf("\nSIGNAL received, stopping packet capture...\n");
-    // @todo: tell other cores/gpu to stop
+    shmem->self_quit = true;
+    GpuHostNicShmem::force_quit = true;
 }
 
 /* ========================================================================= */
 /* =======================            MAIN           ======================= */
 /* ========================================================================= */
+
 
 int main(int argc, char **argv)
 {
@@ -76,7 +80,7 @@ int main(int argc, char **argv)
 
     cudaSetDevice(GPU_ID);
     cudaFree(0);
-    GpuHostNicShmem shmem = GpuHostNicShmem(args);
+    shmem = new GpuHostNicShmem(args);
 
     /* Trust the user to send -a NIC-ADDR -a GPU-ADDR */
     RTE_CHECK(rte_eth_dev_count_avail() == 0, "No Ethernet ports found\n");
@@ -119,10 +123,10 @@ int main(int argc, char **argv)
 
     /* =======================         Main         ======================= */
     id = rte_get_next_lcore(id, 1, 0);
-    rte_eal_remote_launch(tx_core, (void *)&(shmem), id);
+    rte_eal_remote_launch(tx_core, (void *)(shmem), id);
 
     id = rte_get_next_lcore(id, 1, 0);
-    rte_eal_remote_launch(rx_core, (void *)&(shmem), id);
+    rte_eal_remote_launch(rx_core, (void *)(shmem), id);
 
     RTE_WAIT_WORKERS(id, ret);
 

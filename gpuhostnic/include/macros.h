@@ -33,6 +33,22 @@
             fprintf(stderr, "bad exit for coreid: %d\n", id); \
     }
 
+#define CEIL(X, Y) (X + Y - 1) / Y
+
+/* ===================== Macro  Definitions ===================== */
+
+#define MIN_ASCII 0x20
+#define MAX_ASCII 0x7E
+
+#define UDP_HLEN 8
+#define IP_HMINLEN 20
+#define IP_HMAXLEN 60
+#define TCP_HMINLEN 20
+#define TCP_HMAXLEN 60
+
+#define MIN_HLEN RTE_ETHER_HDR_LEN + RTE_VLAN_HLEN + IP_HMINLEN + UDP_HLEN
+#define MAX_HLEN RTE_ETHER_HDR_LEN + RTE_VLAN_HLEN + IP_HMAXLEN + TCP_HMAXLEN
+
 /* =====================  Temporal  Macros  ===================== */
 
 #define RXQUEUES 1
@@ -45,4 +61,5 @@
 #define GPU_PAGE 65536U
 #define ELEMS 8192U
 #define BURST_ELEMS 4096U
+
 #endif
