@@ -165,45 +165,50 @@ void *spct_handler(void *args)
     struct thread_arguments *targs = (struct thread_arguments *)args;
     struct arguments _args = targs->args;
     const unsigned char *packet;
-    struct pcap_pkthdr header;
+    struct pcap_pkthdr *header;
     int slice;
 
     while (targs->signaled == false)
     {
         psem_down(targs->read_mutex);
-        packet = pcap_next(targs->handle, &header);
+        if (pcap_next_ex(targs->handle, &header, &packet) < 0)
+        {
+            targs->signaled = true;
+            psem_up(targs->read_mutex);
+            return NULL;
+        }
         psem_up(targs->read_mutex);
 
 #ifndef __OPTIMIZED
-        slice = vanilla_capping(_args, &header, packet);
+        slice = vanilla_capping(_args, header, packet);
 #else
-        slice = optimized_capping(_args, &header, packet);
+        slice = optimized_capping(_args, header, packet);
 #endif
 
 #ifndef __SIMSTORAGE
         if (slice == NO_CAPPING)
         {
-            log_update((&(targs->args.log)), header.caplen, header.caplen, header.len);
+            log_update((&(targs->args.log)), header->caplen, header->caplen, header->len);
             psem_down(targs->write_mutex);
-            pcap_dump((unsigned char *)_args.file, &header, packet);
+            pcap_dump((unsigned char *)_args.file, header, packet);
             psem_up(targs->write_mutex);
         }
         else if (slice > NO_CAPPING)
         {
-            log_update((&(targs->args.log)), slice, header.caplen, header.len);
+            log_update((&(targs->args.log)), slice, header->caplen, header->len);
             psem_down(targs->write_mutex);
-            header.caplen = slice;
-            pcap_dump((unsigned char *)_args.file, &header, packet);
+            header->caplen = slice;
+            pcap_dump((unsigned char *)_args.file, header, packet);
             psem_up(targs->write_mutex);
         }
 #else
         if (slice == NO_CAPPING)
         {
-            log_update((&(targs->args.log)), header.caplen, header.caplen, header.len);
+            log_update((&(targs->args.log)), header->caplen, header->caplen, header->len);
         }
         else if (slice > NO_CAPPING)
         {
-            log_update((&(targs->args.log)), slice, header.caplen, header.len);
+            log_update((&(targs->args.log)), slice, header->caplen, header->len);
         }
 #endif
     }

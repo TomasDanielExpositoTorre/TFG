@@ -7,7 +7,8 @@ const char *argp_program_bug_address = "<tomas.exposito@estudiante.uam.es>";
 
 static struct argp_option options[] = {
     {"interface", 'i', "name", 0, "Interface used to capture packets."},
-    {"output", 'o', "path", 0, "Path where captured packets will be dumped."},
+    {"output", 'o', "path", 0, "File where captured packets will be dumped."},
+    {"input", 'd', "path", 0, "File to read packets from."},
     {0}};
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state)
@@ -21,6 +22,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state)
         break;
     case 'o':
         targs->args.output = arg;
+        break;
+    case 'd':
+        targs->args.input = arg;
         break;
     default:
         return ARGP_ERR_UNKNOWN;
@@ -51,14 +55,7 @@ int main(int argc, char **argv)
 
     /* Block SIGINT for all threads except master */
     set_mask(thread_mask, SIGINT);
-
-    if (block_signal(SIGINT) ||
-        install_handler(SIGINT, sighandler) ||
-        unblock_signal(SIGINT))
-    {
-        perror("sigaction");
-        return EXIT_FAILURE;
-    }
+    signal(SIGINT, sighandler);
 
     if (pthread_attr_init(&attr) ||
         pthread_attr_setsigmask_np(&attr, &thread_mask))
@@ -84,7 +81,14 @@ int main(int argc, char **argv)
         net = PCAP_NETMASK_UNKNOWN;
 
     /* Initialize packet capture handle and file */
-    targs.handle = pcap_open_live(targs.args.interface, PCAP_BUFSIZE, 1, TO_MS_VAL, error_buff);
+    if (targs.args.input == NULL)
+    {
+        if (pcap_lookupnet(targs.args.interface, &net, &mask, error_buff) == -1)
+            net = PCAP_NETMASK_UNKNOWN;
+        targs.handle = pcap_open_live(targs.args.interface, PCAP_BUFSIZE, 1, TO_MS_VAL, error_buff);
+    }
+    else
+        targs.handle = pcap_open_offline(targs.args.input, error_buff);
 
     if (targs.handle == NULL)
     {
@@ -97,7 +101,7 @@ int main(int argc, char **argv)
         pcap_close(targs.handle);
         return EXIT_FAILURE;
     }
-    if (pcap_compile(targs.handle, &fp, filter_exp, 0, net) || pcap_setfilter(targs.handle, &fp))
+    if (targs.args.input == NULL && (pcap_compile(targs.handle, &fp, filter_exp, 0, net) || pcap_setfilter(targs.handle, &fp)))
     {
         fprintf(stderr, "[Error:Filter] %s: %s\n", filter_exp, pcap_geterr(targs.handle));
         pcap_close(targs.handle);
@@ -131,7 +135,7 @@ int main(int argc, char **argv)
     for (int i = 0; i < NTHREADS; i++)
         pthread_join(*(threads + i), NULL);
 
-    fprintf(stdout, "[Results] (%dh,%dm,%ds)    %d packets    %d bits (stored)    %d bits (captured)    %d bits (total)\n",
+    fprintf(stdout, "[Results] (%dh,%dm,%ds)\t%ld packets\t%ld bits (s)\t%ld bits (c)\t%ld bits (t)\n",
             targs.args.log.elapsed_time / 3600, targs.args.log.elapsed_time / 60, targs.args.log.elapsed_time % 60,
             targs.args.log.packets,
             targs.args.log.stored_bytes * 8,
