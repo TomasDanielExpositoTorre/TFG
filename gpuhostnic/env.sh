@@ -2,6 +2,7 @@ export CUDA_VISIBLE_DEVICES=GPU-81f7fe03-7521-6fd5-dedb-18d958d5ed63 # solo debe
 export PKG_CONFIG_PATH=${PKG_CONFIG_PATH}:/usr/lib/pkgconfig:/opt/mellanox/grpc/lib/{x86_64,aarch64}-linux-gnu/pkgconfig:/opt/mellanox/dpdk/lib/{x86_64,aarch64}-linux-gnu/pkgconfig:/opt/mellanox/doca/lib/{x86_64,aarch64}-linux-gnu/pkgconfig # Para que meson y cmake encuentren las dependencias
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/opt/mellanox/gdrcopy/src:/opt/mellanox/dpdk/lib/{x86_64,aarch64}-linux-gnu:/opt/mellanox/doca/lib/{x86_64,aarch64}-linux-gnu # librerías dinámicas
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/opt/mellanox/gdrcopy/src
+export GDRCOPY_PATH_L=/opt/mellanox/gdrcopy/src
 #export RTE_SDK=/home/users/texposito/dpdk-23.11 # directorio SDK de DPDK
 export RTE_TARGET=x86_64-native-linux-gcc # target de compilación
 export CUDA_HOME=/usr/local/cuda
