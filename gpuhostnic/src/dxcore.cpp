@@ -1,6 +1,6 @@
 #include "headers.h"
 
-int tx_core(void *args)
+int dx_core(void *args)
 {
     GpuHostNicShmem *shm = (GpuHostNicShmem *)args;
     struct rte_gpu_comm_list *comm_list;

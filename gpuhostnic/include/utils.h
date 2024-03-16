@@ -32,7 +32,7 @@ int rx_core(void *args);
 /**
  * TODO document this function
  */
-int tx_core(void *args);
+int dx_core(void *args);
 
 /* =====================  Other  Functions  ===================== */
 

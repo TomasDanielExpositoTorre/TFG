@@ -110,30 +110,28 @@ int main(int argc, char **argv)
 
     /* =======================     Port 0 Setup     ======================= */
 
-    RTE_ERRCHECK(rte_eth_dev_configure(NIC_PORT, RXQUEUES, TXQUEUES, &conf_eth_port),
+    RTE_ERRCHECK(rte_eth_dev_configure(NIC_PORT, RXQUEUES, 0, &conf_eth_port),
             "Cannot configure device: err=%d, port=0\n", ret);
     RTE_ERRCHECK(rte_eth_dev_adjust_nb_rx_tx_desc(NIC_PORT, &nb_rxd, &nb_txd),
             "Cannot adjust number of descriptors: err=%d, port=0\n", ret);
     rte_eth_macaddr_get(NIC_PORT, &conf_ports_eth_addr[NIC_PORT]);
 
-    /* =======================     RX/TX Queues     ======================= */
+    /* =======================     RXQueue Setup    ======================= */
 
     socket_id = (uint8_t)rte_lcore_to_socket_id(0);
 
     RTE_ERRCHECK(rte_eth_rx_queue_setup(NIC_PORT, 0, nb_rxd, socket_id, NULL, mpool_payload),
         "rte_eth_rx_queue_setup: err=%d, port=0\n", ret);
 
-    RTE_ERRCHECK(rte_eth_tx_queue_setup(NIC_PORT, 0, nb_txd, socket_id, NULL),
-        "rte_eth_tx_queue_setup: err=%d, port=0\n", ret);
 
     /* =======================    Device Startup    ======================= */
     RTE_ERRCHECK(rte_eth_dev_start(NIC_PORT),
-        "rte_eth_tx_queue_setup: err=%d, port=0\n", ret);
+        "rte_eth_dev_start: err=%d, port=0\n", ret);
     rte_eth_promiscuous_enable(NIC_PORT);
 
     /* =======================         Main         ======================= */
     id = rte_get_next_lcore(id, 1, 0);
-    rte_eal_remote_launch(tx_core, (void *)(shmem), id);
+    rte_eal_remote_launch(dx_core, (void *)(shmem), id);
 
     id = rte_get_next_lcore(id, 1, 0);
     rte_eal_remote_launch(rx_core, (void *)(shmem), id);
