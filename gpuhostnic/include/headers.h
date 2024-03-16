@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <argp.h>
 #include <signal.h>
+#include <sys/time.h>
 
 /* =====================    DPDK Headers    ===================== */
 #include <rte_common.h>

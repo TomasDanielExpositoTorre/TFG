@@ -6,5 +6,5 @@ then
     ninja -C build
 else
     echo "Running program..."
-    sudo bash -c 'source env.sh && ./build/gpu-hostnic -a 33:00.0 -a 36:00.0 -l 0-4 --'
+    sudo bash -c 'source env.sh && ./build/gpu-hostnic -a 33:00.0 -a 36:00.0 -l 0-4 -- -o "test.pcap"'
 fi

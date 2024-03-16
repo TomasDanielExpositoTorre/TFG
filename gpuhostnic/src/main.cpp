@@ -13,6 +13,7 @@ static struct argp_option options[] = {
     {"percentage", 'p', "value", 0, "Value for ascii percentage detection scheme."},
     {"runlen", 'r', "size", 0, "Value for ascii run detection scheme."},
     {"kernel", 'k', "type", 0, "Kernel used to process packets."},
+    {"output", 'o', "filename", 0, "File where captured packets will be dumped."},
     {0}};
 
 static struct argp argp = {options, parse_opt, 0, NULL};
@@ -59,7 +60,7 @@ int main(int argc, char **argv)
     int ret = 0, id = 0;
     struct rte_eth_dev_info dev_info;
     struct rte_gpu_info gpu_info;
-    struct kernel_args args;
+    struct arguments args;
     uint16_t nb_rxd = 1024U, nb_txd = 1024U;
     uint8_t socket_id;
 
@@ -67,6 +68,7 @@ int main(int argc, char **argv)
     signal(SIGINT, sighandler);
 
     /* =======================   Argument Parsing   ======================= */
+
     RTE_CHECK((ret = rte_eal_init(argc, argv)) < 0, "Invalid EAL arguments\n");
     argc -= ret;
     argv += ret;
@@ -74,8 +76,15 @@ int main(int argc, char **argv)
     args.ascii_runlen = 15;
     args.ascii_percentage = 45;
     args.kernel = VANILLA_CAPPING_THREAD;
+    args.output = NULL;
     argp_parse(&argp, argc, argv, 0, 0, &args);
     
+    if (args.output == NULL)
+    {
+        fprintf(stderr, "Please provide a path to save captured packets to\n");
+        return EXIT_FAILURE;
+    }
+
     /* =======================     Device Setup     ======================= */
 
     cudaSetDevice(GPU_ID);
@@ -108,6 +117,7 @@ int main(int argc, char **argv)
     rte_eth_macaddr_get(NIC_PORT, &conf_ports_eth_addr[NIC_PORT]);
 
     /* =======================     RX/TX Queues     ======================= */
+
     socket_id = (uint8_t)rte_lcore_to_socket_id(0);
 
     RTE_ERRCHECK(rte_eth_rx_queue_setup(NIC_PORT, 0, nb_rxd, socket_id, NULL, mpool_payload),
@@ -131,6 +141,7 @@ int main(int argc, char **argv)
     RTE_WAIT_WORKERS(id, ret);
 
     /* =======================       Cleaning       ======================= */
+
     GpuHostNicShmem::shmem_unregister(&(ext_mem), &(dev_info), GPU_ID, NIC_PORT);
 
     return EXIT_SUCCESS;

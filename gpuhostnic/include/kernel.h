@@ -18,7 +18,7 @@ enum kernel_type
 /**
  * TODO document
  */
-struct kernel_args
+struct kernel_arguments
 {
     unsigned short ascii_percentage;
     unsigned short ascii_runlen;
@@ -28,5 +28,5 @@ struct kernel_args
 /**
  * TODO document
  */
-void launch_kernel(struct rte_gpu_comm_list *comm_list, int blocks, int threads, cudaStream_t stream, kernel_args args);
+void launch_kernel(struct rte_gpu_comm_list *comm_list, int blocks, int threads, cudaStream_t stream, struct kernel_arguments kargs);
 #endif

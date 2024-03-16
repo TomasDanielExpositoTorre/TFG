@@ -1,14 +1,24 @@
 #include "headers.h"
 
-GpuHostNicShmem::GpuHostNicShmem(struct kernel_args _args)
+GpuHostNicShmem::GpuHostNicShmem(struct arguments args)
 {
+    struct pcap_file_header file_header;
     cudaError_t ret;
-    args = _args;
+
+    kargs.ascii_percentage = args.ascii_percentage;
+    kargs.ascii_runlen = args.ascii_runlen;
+    kargs.kernel = args.kernel;
+
     rxi = dxi = 0;
     self_quit = 0;
     size = 1024U;
 
-    /* Esto hasta que no importe GDRCopy como que revienta */
+    if ((pcap_fp = fopen(args.output, "wb")) == NULL)
+    {
+        perror("fopen");
+        exit(EXIT_FAILURE);
+    }
+
     if ((comm_list = rte_gpu_comm_create_list(GPU_ID, size)) == NULL)
         rte_panic("rte_gpu_comm_create_list");
 
@@ -17,6 +27,8 @@ GpuHostNicShmem::GpuHostNicShmem(struct kernel_args _args)
         fprintf(stderr, "Cuda failed with %s \n", cudaGetErrorString(ret));
         exit(EXIT_FAILURE);
     }
+
+    fwrite_unlocked(&file_header, sizeof(pcap_file_header), 1, pcap_fp);
 }
 
 GpuHostNicShmem::~GpuHostNicShmem()
@@ -24,37 +36,7 @@ GpuHostNicShmem::~GpuHostNicShmem()
     cudaStreamDestroy(stream);
     rte_gpu_comm_destroy_list(comm_list, size);
 }
-
-bool GpuHostNicShmem::list_iswritable()
-{
-    enum rte_gpu_comm_list_status s;
-    int ret = rte_gpu_comm_get_status(&comm_list[rxi], &s);
-    return ret == 0 && s == RTE_GPU_COMM_LIST_FREE;
-}
-
-bool GpuHostNicShmem::list_isreadable(int *ret)
-{
-    enum rte_gpu_comm_list_status s;
-    *ret = rte_gpu_comm_get_status(&comm_list[dxi], &s);
-    return s == RTE_GPU_COMM_LIST_DONE;
-}
-
-bool GpuHostNicShmem::list_push(rte_mbuf **packets, int mbufsize)
-{
-    return rte_gpu_comm_populate_list_pkts(&(comm_list[rxi]), packets, mbufsize) == 0;
-}
-
-void GpuHostNicShmem::list_process(int blocks, int threads)
-{
-    launch_kernel(&(comm_list[rxi]), blocks, threads, stream, args);
-    rxi = (rxi + 1) % size;
-}
-
-void GpuHostNicShmem::list_pop()
-{
-    rte_gpu_comm_cleanup_list(&(comm_list[dxi]));
-    dxi = (dxi + 1) % size;
-}
+/* ==========================  Static  Functions  ========================== */
 
 void GpuHostNicShmem::shmem_register(struct rte_pktmbuf_extmem *ext_mem,
                                      struct rte_eth_dev_info *dev_info,
@@ -82,4 +64,45 @@ void GpuHostNicShmem::shmem_unregister(struct rte_pktmbuf_extmem *ext_mem,
         rte_exit(EXIT_FAILURE, "Could not DMA unmap EXT memory\n");
     if ((ret = rte_gpu_mem_unregister(gpu_id, ext_mem->buf_ptr)) < 0)
         rte_exit(EXIT_FAILURE, "rte_gpu_mem_unregister returned error %d\n", ret);
+}
+
+
+/* ==========================  RxCore  Functions  ========================== */
+
+bool GpuHostNicShmem::rxlist_iswritable(int *ret)
+{
+    enum rte_gpu_comm_list_status s;
+    *ret = rte_gpu_comm_get_status(&comm_list[rxi], &s);
+    return s == RTE_GPU_COMM_LIST_FREE;
+}
+
+int GpuHostNicShmem::rxlist_write(rte_mbuf **packets, int mbufsize)
+{
+    return rte_gpu_comm_populate_list_pkts(&(comm_list[rxi]), packets, mbufsize);
+}
+
+void GpuHostNicShmem::rxlist_process(int blocks, int threads)
+{
+    launch_kernel(&(comm_list[rxi]), blocks, threads, stream, kargs);
+    rxi = (rxi + 1) % size;
+}
+
+/* ==========================  DxCore  Functions  ========================== */
+
+bool GpuHostNicShmem::dxlist_isreadable(int *ret)
+{
+    enum rte_gpu_comm_list_status s;
+    *ret = rte_gpu_comm_get_status(&comm_list[dxi], &s);
+    return s == RTE_GPU_COMM_LIST_DONE;
+}
+
+struct rte_gpu_comm_list *GpuHostNicShmem::dxlist_read()
+{
+    return &(comm_list[dxi]);
+}
+
+void GpuHostNicShmem::dxlist_clean()
+{
+    rte_gpu_comm_cleanup_list(&(comm_list[dxi]));
+    dxi = (dxi + 1) % size;
 }

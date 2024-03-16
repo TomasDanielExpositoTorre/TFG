@@ -1,6 +1,6 @@
 #include "headers.h"
 
-__global__ void vanilla_capping_thread(struct rte_gpu_comm_list *comm_list, kernel_args args)
+__global__ void vanilla_capping_thread(struct rte_gpu_comm_list *comm_list, struct kernel_arguments args)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int runlen = 0, total = 0;
@@ -43,7 +43,7 @@ __global__ void vanilla_capping_thread(struct rte_gpu_comm_list *comm_list, kern
     __syncthreads();
 }
 
-__global__ void optimized_capping_thread(struct rte_gpu_comm_list *comm_list, kernel_args args)
+__global__ void optimized_capping_thread(struct rte_gpu_comm_list *comm_list, struct kernel_arguments args)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int runlen = 0, total = 0, seen = 0;
@@ -93,25 +93,25 @@ __global__ void optimized_capping_thread(struct rte_gpu_comm_list *comm_list, ke
     __syncthreads();
 }
 
-__global__ void naive_capping_warp(struct rte_gpu_comm_list *comm_list, kernel_args args)
+__global__ void naive_capping_warp(struct rte_gpu_comm_list *comm_list, struct kernel_arguments args)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     printf("%d\n", i);
 }
 
-__global__ void invasive_capping_warp(struct rte_gpu_comm_list *comm_list, kernel_args args)
+__global__ void invasive_capping_warp(struct rte_gpu_comm_list *comm_list, struct kernel_arguments args)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     printf("%d\n", i);
 }
 
-__global__ void coercive_capping_warp(struct rte_gpu_comm_list *comm_list, kernel_args args)
+__global__ void coercive_capping_warp(struct rte_gpu_comm_list *comm_list, struct kernel_arguments args)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     printf("%d\n", i);
 }
 
-void launch_kernel(struct rte_gpu_comm_list *comm_list, int blocks, int threads, cudaStream_t stream, kernel_args args)
+void launch_kernel(struct rte_gpu_comm_list *comm_list, int blocks, int threads, cudaStream_t stream, struct kernel_arguments args)
 {
     if (args.kernel == VANILLA_CAPPING_THREAD)
         vanilla_capping_thread<<<blocks, threads, 0, stream>>>(comm_list, args);

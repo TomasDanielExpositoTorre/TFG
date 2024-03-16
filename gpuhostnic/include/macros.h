@@ -37,6 +37,8 @@
 
 /* ===================== Macro  Definitions ===================== */
 
+#define DLT_EN10MB 1
+
 #define MIN_ASCII 0x20
 #define MAX_ASCII 0x7E
 

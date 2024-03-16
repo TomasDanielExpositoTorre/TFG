@@ -2,7 +2,7 @@
 
 error_t parse_opt(int key, char *arg, struct argp_state *state)
 {
-    struct kernel_args *args = (struct kernel_args *)state->input;
+    struct arguments *args = (struct arguments *)state->input;
 
     switch (key)
     {
@@ -29,6 +29,9 @@ error_t parse_opt(int key, char *arg, struct argp_state *state)
             fprintf(stderr, "no\n");
             exit(EXIT_FAILURE);
         }
+        break;
+    case 'o':
+        args->output = arg;
         break;
     default:
         return ARGP_ERR_UNKNOWN;
