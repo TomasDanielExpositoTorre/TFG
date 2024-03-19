@@ -37,7 +37,7 @@ int rx_core(void *args)
             GpuHostNicShmem::force_quit = true;
             return EXIT_FAILURE;
         }
-        shm->rxlist_process(CEIL(i, 32), 32);
+        shm->rxlist_process(ceil(i, 32), 32);
     }
     return EXIT_SUCCESS;
 }

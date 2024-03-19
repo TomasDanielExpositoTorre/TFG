@@ -10,15 +10,15 @@ error_t parse_opt(int key, char *arg, struct argp_state *state)
         args->ascii_percentage = atoi(arg);
         if (args->ascii_percentage <= 0 || args->ascii_percentage > 100)
         {
-            fprintf(stderr, "no\n");
+            fprintf(stderr, "Incorrect ASCII percentage. Value must be from 1 to 100\n");
             exit(EXIT_FAILURE);
         }
         break;
     case 'r':
         args->ascii_runlen = atoi(arg);
-        if (args->ascii_runlen <= 0)
+        if (args->ascii_runlen <= 0 || args->ascii_runlen > RTE_ETHER_MAX_LEN)
         {
-            fprintf(stderr, "no\n");
+            fprintf(stderr, "Incorrect ASCII runlen. Value must be a postive number\n");
             exit(EXIT_FAILURE);
         }
         break;
@@ -26,7 +26,7 @@ error_t parse_opt(int key, char *arg, struct argp_state *state)
         args->kernel = atoi(arg);
         if (args->kernel < VANILLA_CAPPING_THREAD || args->kernel > COERCIVE_CAPPING_WARP)
         {
-            fprintf(stderr, "no\n");
+            fprintf(stderr, "Incorrect kernel type. Value must be from %d to %d\n", VANILLA_CAPPING_THREAD, COERCIVE_CAPPING_WARP);
             exit(EXIT_FAILURE);
         }
         break;

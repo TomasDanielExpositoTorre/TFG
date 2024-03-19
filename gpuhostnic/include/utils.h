@@ -2,7 +2,10 @@
 #define SPC_PARSER_H
 
 #include "headers.h"
+
 /* =====================     PCAP Saver     ===================== */
+
+/** Header for a pcap formatted file*/
 struct pcap_file_header
 {
     const uint32_t magic_number = 0xA1B2C3D4;
@@ -14,6 +17,7 @@ struct pcap_file_header
     const uint32_t network = DLT_EN10MB;
 };
 
+/** Header for a pcap formatted packet */
 struct pcap_packet_header
 {
     uint32_t ts_sec;
@@ -25,17 +29,29 @@ struct pcap_packet_header
 /* =====================    RX/TX  Cores    ===================== */
 
 /**
- * TODO document this function
+ * Handler function for a reception thread. This function receives
+ * packets in bursts from a defined reception queue, and populates
+ * a communication list for GPU processing.
+ * 
+ * Reception threads should also store statistics relative to the
+ * received data: received packets, bytes...
+ * 
+ * @param args: Arguments required to manipulate a communication ring.
  */
 int rx_core(void *args);
 
 /**
- * TODO document this function
+ * Handler function for a dumping thread. This function retrieves
+ * packets from a processed burst list, and writes relevant data
+ * to disk.
+ * 
+ * @param args: Arguments required to manipulate a communication ring.
  */
 int dx_core(void *args);
 
 /* =====================  Other  Functions  ===================== */
 
+/* User arguments inserted at the beginning of the program */
 struct arguments
 {
     unsigned short ascii_percentage;
@@ -45,7 +61,7 @@ struct arguments
 };
 
 /**
- * TODO document this function
+ * Parsing function for received user arguments.
  */
 error_t parse_opt(int key, char *arg, struct argp_state *state);
 

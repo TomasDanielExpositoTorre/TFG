@@ -5,26 +5,20 @@
 
 /* =====================  Macro  Functions  ===================== */
 
-/**
- * TODO document
- */
-#define RTE_CHECK(cond, error_msg) \
-    if (cond)                      \
-    rte_exit(EXIT_FAILURE, error_msg)
+/* Macro wrapper for condition checking on rte functions */
+#define try(cond) if ((ret = cond) != 0)
+
+/* Macro wrapper for exiting a program with a message */
+#define fail(...) rte_exit(EXIT_FAILURE, __VA_ARGS__)
+
+/* Returns ceil(X/Y) */
+#define ceil(X, Y) (X + Y - 1) / Y
 
 /**
- * TODO document
- */
-#define RTE_ERRCHECK(stmt, error_msg, ...) \
-    ret = (stmt);                          \
-    if (ret < 0)                           \
-    rte_exit(EXIT_FAILURE, error_msg, __VA_ARGS__)
-
-/**
- * TODO document
+ * Macro handler for waiting for launched worker threads.
  */
 #define RTE_WAIT_WORKERS(id, ret)                             \
-    for (id = rte_get_next_lcore(-1, 1, 0);                   \
+    for (int id = rte_get_next_lcore(-1, 1, 0);               \
          id < RTE_MAX_LCORE && ret >= 0;                      \
          id = rte_get_next_lcore(id, 1, 0))                   \
     {                                                         \
@@ -33,14 +27,16 @@
             fprintf(stderr, "bad exit for coreid: %d\n", id); \
     }
 
-#define CEIL(X, Y) (X + Y - 1) / Y
-
 /* ===================== Macro  Definitions ===================== */
 
-#define DLT_EN10MB 1
 
+/** Minimum printable ascii character */
 #define MIN_ASCII 0x20
+/** Maximum printable ascii character */
 #define MAX_ASCII 0x7E
+
+/* Lnkytype Ethernet */
+#define DLT_EN10MB 1
 
 #define UDP_HLEN 8
 #define IP_HMINLEN 20
@@ -48,13 +44,16 @@
 #define TCP_HMINLEN 20
 #define TCP_HMAXLEN 60
 
+/** Minimum length of supported packet header, assuming 4 bytes for VLAN */
 #define MIN_HLEN RTE_ETHER_HDR_LEN + RTE_VLAN_HLEN + IP_HMINLEN + UDP_HLEN
+
+/** Maximum length of supported packet header, assuming 4 bytes for VLAN */
 #define MAX_HLEN RTE_ETHER_HDR_LEN + RTE_VLAN_HLEN + IP_HMAXLEN + TCP_HMAXLEN
 
 /* =====================  Temporal  Macros  ===================== */
 
 #define RXQUEUES 1
-#define TXQUEUES 1
+#define TXQUEUES 0
 
 #define NIC_PORT 0
 #define GPU_ID 0

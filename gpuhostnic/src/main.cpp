@@ -54,7 +54,6 @@ void sighandler(int signal)
 /* =======================            MAIN           ======================= */
 /* ========================================================================= */
 
-
 int main(int argc, char **argv)
 {
     int ret = 0, id = 0;
@@ -69,16 +68,17 @@ int main(int argc, char **argv)
 
     /* =======================   Argument Parsing   ======================= */
 
-    RTE_CHECK((ret = rte_eal_init(argc, argv)) < 0, "Invalid EAL arguments\n");
+    try(rte_eal_init(argc, argv))
+        fail("Invalid EAL arguments\n");
     argc -= ret;
     argv += ret;
-    
+
     args.ascii_runlen = 15;
     args.ascii_percentage = 45;
     args.kernel = VANILLA_CAPPING_THREAD;
     args.output = NULL;
     argp_parse(&argp, argc, argv, 0, 0, &args);
-    
+
     if (args.output == NULL)
     {
         fprintf(stderr, "Please provide a path to save captured packets to\n");
@@ -91,11 +91,15 @@ int main(int argc, char **argv)
     cudaFree(0);
     shmem = new GpuHostNicShmem(args);
 
-    /* Trust the user to send -a NIC-ADDR -a GPU-ADDR */
-    RTE_CHECK(rte_eth_dev_count_avail() == 0, "No Ethernet ports found\n");
-    RTE_CHECK(rte_gpu_count_avail() == 0, "No GPUs found\n");
-    RTE_CHECK(rte_eth_dev_info_get(NIC_PORT, &dev_info), "Failed to get device info for port 0\n");
-    RTE_CHECK(rte_gpu_info_get(GPU_ID, &gpu_info), "Failed to get gpu info\n");
+    if (!rte_eth_dev_count_avail())
+        fail("No Ethernet ports found\n");
+    if (!rte_gpu_count_avail())
+        fail("No GPUs found\n");
+
+    try(rte_eth_dev_info_get(NIC_PORT, &dev_info))
+        fail("Cannot get ethdevice info: err=%d, port=0\n", ret);
+    try(rte_gpu_info_get(GPU_ID, &gpu_info))
+        fail("Cannot get device info: err=%d, port=0\n", ret);
 
     /* =======================  Mempool Allocation  ======================= */
 
@@ -106,27 +110,27 @@ int main(int argc, char **argv)
     mpool_payload = rte_pktmbuf_pool_create_extbuf("payload_mpool", ELEMS,
                                                    0, 0, ext_mem.elt_size,
                                                    rte_socket_id(), &ext_mem, 1);
-    RTE_CHECK(mpool_payload == NULL, "Could not create EXT memory mempool\n");
+    if (mpool_payload == NULL)
+        fail("Could not create EXT memory mempool\n");
 
     /* =======================     Port 0 Setup     ======================= */
 
-    RTE_ERRCHECK(rte_eth_dev_configure(NIC_PORT, RXQUEUES, 0, &conf_eth_port),
-            "Cannot configure device: err=%d, port=0\n", ret);
-    RTE_ERRCHECK(rte_eth_dev_adjust_nb_rx_tx_desc(NIC_PORT, &nb_rxd, &nb_txd),
-            "Cannot adjust number of descriptors: err=%d, port=0\n", ret);
+    try(rte_eth_dev_configure(NIC_PORT, RXQUEUES, TXQUEUES, &conf_eth_port))
+        fail("Cannot configure device: err=%d, port=0\n", ret);
+    try(rte_eth_dev_adjust_nb_rx_tx_desc(NIC_PORT, &nb_rxd, &nb_txd))
+        fail("Cannot adjust number of descriptors: err=%d, port=0\n", ret);
     rte_eth_macaddr_get(NIC_PORT, &conf_ports_eth_addr[NIC_PORT]);
 
     /* =======================     RXQueue Setup    ======================= */
 
     socket_id = (uint8_t)rte_lcore_to_socket_id(0);
 
-    RTE_ERRCHECK(rte_eth_rx_queue_setup(NIC_PORT, 0, nb_rxd, socket_id, NULL, mpool_payload),
-        "rte_eth_rx_queue_setup: err=%d, port=0\n", ret);
-
+    try(rte_eth_rx_queue_setup(NIC_PORT, 0, nb_rxd, socket_id, NULL, mpool_payload))
+        fail("rte_eth_rx_queue_setup: err=%d, port=0\n", ret);
 
     /* =======================    Device Startup    ======================= */
-    RTE_ERRCHECK(rte_eth_dev_start(NIC_PORT),
-        "rte_eth_dev_start: err=%d, port=0\n", ret);
+    try(rte_eth_dev_start(NIC_PORT))
+        fail("rte_eth_dev_start: err=%d, port=0\n", ret);
     rte_eth_promiscuous_enable(NIC_PORT);
 
     /* =======================         Main         ======================= */
