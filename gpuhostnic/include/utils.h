@@ -57,7 +57,8 @@ struct arguments
     unsigned short ascii_percentage;
     unsigned short ascii_runlen;
     unsigned short kernel;
-    char* output;
+    unsigned short queues;
+    FILE* output;
 };
 
 /**

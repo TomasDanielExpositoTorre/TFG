@@ -6,6 +6,8 @@
 #include <argp.h>
 #include <signal.h>
 #include <sys/time.h>
+#include <vector>
+#include <mutex>
 
 /* =====================    DPDK Headers    ===================== */
 #include <rte_common.h>

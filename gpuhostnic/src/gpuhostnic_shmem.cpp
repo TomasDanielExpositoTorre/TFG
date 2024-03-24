@@ -1,23 +1,16 @@
 #include "headers.h"
 
-GpuHostNicShmem::GpuHostNicShmem(struct arguments args)
+GpuHostNicShmem::GpuHostNicShmem(struct arguments args, int i)
 {
-    struct pcap_file_header file_header;
     cudaError_t ret;
 
     kargs.ascii_percentage = args.ascii_percentage;
     kargs.ascii_runlen = args.ascii_runlen;
     kargs.kernel = args.kernel;
-
+    pcap_fp = args.output;
+    id = i;
     rxi = dxi = 0;
-    self_quit = 0;
     size = 1024U;
-
-    if ((pcap_fp = fopen(args.output, "wb")) == NULL)
-    {
-        perror("fopen");
-        exit(EXIT_FAILURE);
-    }
 
     if ((comm_list = rte_gpu_comm_create_list(GPU_ID, size)) == NULL)
         rte_panic("rte_gpu_comm_create_list");
@@ -27,8 +20,6 @@ GpuHostNicShmem::GpuHostNicShmem(struct arguments args)
         fprintf(stderr, "Cuda failed with %s \n", cudaGetErrorString(ret));
         exit(EXIT_FAILURE);
     }
-
-    fwrite_unlocked(&file_header, sizeof(pcap_file_header), 1, pcap_fp);
 }
 
 GpuHostNicShmem::~GpuHostNicShmem()
@@ -36,6 +27,7 @@ GpuHostNicShmem::~GpuHostNicShmem()
     cudaStreamDestroy(stream);
     rte_gpu_comm_destroy_list(comm_list, size);
 }
+
 /* ==========================  Static  Functions  ========================== */
 
 void GpuHostNicShmem::shmem_register(struct rte_pktmbuf_extmem *ext_mem,

@@ -1,4 +1,5 @@
 #include "headers.h"
+#include <mutex>
 
 error_t parse_opt(int key, char *arg, struct argp_state *state)
 {
@@ -31,7 +32,19 @@ error_t parse_opt(int key, char *arg, struct argp_state *state)
         }
         break;
     case 'o':
-        args->output = arg;
+        if ((args->output = fopen(arg, "wb")) == NULL)
+        {
+            perror("fopen");
+            exit(EXIT_FAILURE);
+        }
+        break;
+    case 'q':
+        args->queues = atoi(arg);
+        if (args->queues <= 0)
+        {
+            fprintf(stderr, "Number of queues cannot be 0.\n");
+            exit(EXIT_FAILURE);
+        }
         break;
     default:
         return ARGP_ERR_UNKNOWN;
@@ -48,7 +61,7 @@ int dx_core(void *args)
     int ret = 0;
     bool cap;
 
-    printf("[DX CORE] Starting...\n");
+    printf("[DX] Starting Core %d...\n", shm->id);
     cudaSetDevice(GPU_ID);
 
     while (keep_alive(shm))
@@ -56,7 +69,7 @@ int dx_core(void *args)
         while (keep_alive(shm) && shm->dxlist_isreadable(&ret) == false)
             if (ret != 0)
             {
-                fprintf(stderr, "rte_gpu_comm_get_status error, killing the app...\n");
+                fprintf(stderr, "[DX] rte_gpu_comm_get_status error: %s", rte_strerror(ret));
                 GpuHostNicShmem::force_quit = true;
                 return EXIT_FAILURE;
             }
@@ -75,8 +88,11 @@ int dx_core(void *args)
             packet_header.ts_usec = ts.tv_usec;
             packet_header.caplen = cap ? MAX_HLEN : comm_list->pkt_list[i].size;
             packet_header.len = comm_list->pkt_list[i].size;
+
+            GpuHostNicShmem::write.lock();
             fwrite_unlocked(&(packet_header), sizeof(pcap_packet_header), 1, shm->pcap_fp);
             fwrite_unlocked((const void *)comm_list->pkt_list[i].addr, packet_header.caplen, 1, shm->pcap_fp);
+            GpuHostNicShmem::write.unlock();
         }
 
         shm->dxlist_clean();
@@ -90,34 +106,31 @@ int rx_core(void *args)
     struct rte_mbuf *packets[1024];
     int i, ret;
 
-    printf("[RX CORE] Starting...\n");
+    printf("[RX] Starting Core %d...\n", shm->id);
     cudaSetDevice(GPU_ID);
 
     while (keep_alive(shm))
     {
         i = 0;
-        if (shm->rxlist_iswritable(&ret) == false)
-        {
+
+        while (shm->rxlist_iswritable(&ret) == false)
             if (ret != 0)
             {
-                fprintf(stderr, "rte_gpu_comm_get_status error, killing the app...\n");
+                fprintf(stderr, "rte_gpu_comm_get_status error: %s", rte_strerror(ret));
                 GpuHostNicShmem::force_quit = true;
                 return EXIT_FAILURE;
             }
-            fprintf(stderr, "Communication list not free, quitting...\n");
-            shm->self_quit = true;
-            return EXIT_FAILURE;
-        }
 
+        /* Populate burst */
         while (keep_alive(shm) && i < (1024 - 8))
-            i += rte_eth_rx_burst(NIC_PORT, 0, &(packets[i]), (1024 - i));
+            i += rte_eth_rx_burst(NIC_PORT, shm->id, &(packets[i]), (1024 - i));
 
         if (i == 0)
             break;
 
         if (shm->rxlist_write(packets, i) != 0)
         {
-            fprintf(stderr, "rxlist_write error, killing the app...\n");
+            fprintf(stderr, "rte_gpu_comm_populate_list_pkts error: %s", rte_strerror(ret));
             GpuHostNicShmem::force_quit = true;
             return EXIT_FAILURE;
         }

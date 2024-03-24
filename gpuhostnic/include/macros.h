@@ -52,9 +52,6 @@
 
 /* =====================  Temporal  Macros  ===================== */
 
-#define RXQUEUES 1
-#define TXQUEUES 0
-
 #define NIC_PORT 0
 #define GPU_ID 0
 
