@@ -68,7 +68,7 @@ int main(int argc, char **argv)
 
     /* =======================   Argument Parsing   ======================= */
 
-    try(rte_eal_init(argc, argv))
+    if((ret = rte_eal_init(argc, argv)) < 0)
         fail("Invalid EAL arguments\n");
     argc -= ret;
     argv += ret;
