@@ -7,6 +7,13 @@
 
 #define keep_alive(shm) (!shm->force_quit)
 
+struct queue_stats
+{
+    unsigned long int packets;
+    unsigned long int total_bytes;
+    unsigned long int stored_bytes;
+};
+
 /**
  * Implementation of a shared memory wrapper between CPU, GPU and NIC.
  *
@@ -27,9 +34,11 @@ public:
     static volatile bool force_quit;
     static std::mutex write;
     struct kernel_arguments kargs;
-    int id;
+    struct queue_stats stats;
+    struct pcap_packet_header *burst_headers;
     cudaStream_t stream;
     FILE *pcap_fp;
+    int id;
 
     /**
      * Constructor method for this object. Creates the necessary elements
@@ -91,7 +100,7 @@ public:
      * Modifications to the original struct consist of a 1-bit left-shift in
      * the packet's size to store the aforementioned flag.
      */
-    struct rte_gpu_comm_list *dxlist_read();
+    struct rte_gpu_comm_list *dxlist_read(struct pcap_packet_header* burst_header);
 
     /**
      * Restores the packet burst list to its original state and returns mbufs
