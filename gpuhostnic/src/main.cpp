@@ -14,6 +14,9 @@ static struct argp_option options[] = {
     {"kernel", 'k', "type", 0, "Kernel used to process packets."},
     {"output", 'o', "filename", 0, "File where captured packets will be dumped."},
     {"queues", 'q', "n", 0, "Number of queues to use for burst capture."},
+    {"elements", 'e', "size", 0, "Number of elements to create for the mempool."},
+    {"burst", 'b', "size", 0, "Number of packets per burst."},
+    {"comm", 'c', "size", 0, "Number of bursts per communication list."},
     {0}};
 
 static struct argp argp = {options, parse_opt, 0, NULL};
@@ -22,19 +25,15 @@ static struct argp argp = {options, parse_opt, 0, NULL};
 /* =======================        DPDK CONFIG        ======================= */
 /* ========================================================================= */
 
-struct rte_ether_addr conf_ports_eth_addr[RTE_MAX_ETHPORTS];
-struct rte_mempool *mpool_payload, *mpool_header;
-struct rte_pktmbuf_extmem ext_mem;
-
 static struct rte_eth_conf conf_eth_port = {
     .rxmode = {
         .mq_mode = RTE_ETH_MQ_RX_RSS,
         .offloads = RTE_ETH_RX_OFFLOAD_BUFFER_SPLIT, // Required by buffer split feature
     },
-    .txmode = {
-        .mq_mode = RTE_ETH_MQ_TX_NONE,
-        .offloads = RTE_ETH_TX_OFFLOAD_MULTI_SEGS,
-    },
+    // .txmode = {
+    //     .mq_mode = RTE_ETH_MQ_TX_NONE,
+    //     .offloads = RTE_ETH_TX_OFFLOAD_MULTI_SEGS,
+    // },
     .rx_adv_conf = {
         .rss_conf = {.rss_key = NULL, .rss_hf = RTE_ETH_RSS_IP},
     }};
@@ -58,11 +57,22 @@ int main(int argc, char **argv)
     struct pcap_file_header file_header;
     struct rte_eth_dev_info dev_info;
     struct rte_gpu_info gpu_info;
-    struct arguments args;
-    int ret, id, tmp;
+    struct rte_mempool *mpool_payload;
+    struct rte_pktmbuf_extmem ext_mem;
+    struct rte_eth_stats stats;
+    struct arguments args = {
+        .ascii_percentage = 15,
+        .ascii_runlen = 15,
+        .kernel = VANILLA_CAPPING_THREAD,
+        .queues = 1,
+        .elements = 8192,
+        .bsize = 1024,
+        .rsize = 1024,
+        .output = NULL};
+    std::vector<GpuHostNicShmem *> shmem;
     uint16_t nb_rxd = 1024U, nb_txd = 1024U;
     uint8_t socket_id;
-    std::vector<GpuHostNicShmem *> shmem;
+    int ret, id, tmp, queues, time_elapsed;
 
     cudaProfilerStop();
     signal(SIGINT, sighandler);
@@ -79,6 +89,8 @@ int main(int argc, char **argv)
     args.kernel = VANILLA_CAPPING_THREAD;
     args.output = NULL;
     args.queues = 1;
+    args.rsize = 1024;
+    args.bsize = 1024;
     argp_parse(&argp, argc, argv, 0, 0, &args);
 
     fwrite_unlocked(&file_header, sizeof(pcap_file_header), 1, args.output);
@@ -104,11 +116,11 @@ int main(int argc, char **argv)
 
     /* =======================  Mempool Allocation  ======================= */
 
-    ext_mem.elt_size = RTE_PKTBUF_DATAROOM + RTE_PKTMBUF_HEADROOM;        // packet size
-    ext_mem.buf_len = RTE_ALIGN_CEIL(ELEMS * ext_mem.elt_size, GPU_PAGE); // buffer size
+    ext_mem.elt_size = RTE_PKTBUF_DATAROOM + RTE_PKTMBUF_HEADROOM;                // packet size
+    ext_mem.buf_len = RTE_ALIGN_CEIL(args.elements * ext_mem.elt_size, GPU_PAGE); // buffer size
 
     GpuHostNicShmem::shmem_register(&(ext_mem), &(dev_info), GPU_ID);
-    mpool_payload = rte_pktmbuf_pool_create_extbuf("payload_mpool", ELEMS,
+    mpool_payload = rte_pktmbuf_pool_create_extbuf("payload_mpool", args.elements,
                                                    0, 0, ext_mem.elt_size,
                                                    rte_socket_id(), &ext_mem, 1);
     if (mpool_payload == NULL)
@@ -120,7 +132,6 @@ int main(int argc, char **argv)
         fail("Cannot configure device: err=%d, port=0\n", ret);
     try(rte_eth_dev_adjust_nb_rx_tx_desc(NIC_PORT, &nb_rxd, &nb_txd))
         fail("Cannot adjust number of descriptors: err=%d, port=0\n", ret);
-    rte_eth_macaddr_get(NIC_PORT, &conf_ports_eth_addr[NIC_PORT]);
 
     /* =======================     RXQueue Setup    ======================= */
 
@@ -148,10 +159,63 @@ int main(int argc, char **argv)
         rte_eal_remote_launch(rx_core, (void *)(shmem[id]), tmp);
     }
 
-    tmp = rte_get_next_lcore(tmp, 1, 0);
-    rte_eal_remote_launch(print_stats, (void *)&(shmem), tmp);
+    queues = shmem.size();
+    time_elapsed = 0;
+
+    sleep(5);
+    while (GpuHostNicShmem::force_quit == false)
+    {
+        rte_eth_stats_get(NIC_PORT, &stats);
+        time_elapsed += 5;
+
+        puts("\n---------------------------------------------------------------------");
+        printf("\nTime elapsed: %dh,%dm,%ds\n",
+               time_elapsed / 3600,
+               time_elapsed / 60 % 60,
+               time_elapsed % 60);
+        puts("DPDK queue information");
+        for (id = 0; id < queues; id++)
+            printf("Queue %d: %lu bytes, %lu packets received, %lu packets dropped\n",
+                   id,
+                   stats.q_ibytes[id],
+                   stats.q_ipackets[id],
+                   stats.q_errors[id]);
+        puts("\nGpuHostNic queue information");
+        for (auto &it : shmem)
+        {
+            it->logn.lock();
+            it->logs.lock();
+            printf("Queue %d: %.2f pps, %.2f bps (total), %.2f bps (stored)\n",
+                   it->id,
+                   (float)(it->stats.packets) / time_elapsed,
+                   (float)(it->stats.total_bytes * 8) / time_elapsed,
+                   (float)(it->stats.stored_bytes * 8) / time_elapsed);
+            it->logs.unlock();
+            it->logn.unlock();
+        }
+        sleep(5);
+    }
 
     RTE_WAIT_WORKERS(id, ret);
+    rte_eth_stats_get(NIC_PORT, &stats);
+
+    puts("\n---------------------------------------------------------------------");
+    puts("Exiting program...");
+    puts("DPDK queue information");
+    for (id = 0; id < queues; id++)
+        printf("Queue %d: %lu bytes, %lu packets received, %lu packets dropped\n",
+               id,
+               stats.q_ibytes[id],
+               stats.q_ipackets[id],
+               stats.q_errors[id]);
+    puts("\nGpuHostNic queue information");
+    for (auto &it : shmem)
+        printf("Queue %d: %lu packets, %lu bytes (total), %lu bytes (stored)\n",
+               it->id,
+               it->stats.packets,
+               it->stats.total_bytes,
+               it->stats.stored_bytes);
+
 
     /* =======================       Cleaning       ======================= */
 

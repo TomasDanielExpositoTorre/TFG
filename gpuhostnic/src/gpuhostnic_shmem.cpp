@@ -8,14 +8,15 @@ GpuHostNicShmem::GpuHostNicShmem(struct arguments args, int i)
     kargs.ascii_runlen = args.ascii_runlen;
     kargs.kernel = args.kernel;
     pcap_fp = args.output;
+    size = args.rsize;
+    bsize = args.bsize;
     id = i;
 
     rxi = dxi = 0;
-    size = 1024U;
     stats.packets = 0;
     stats.stored_bytes = 0;
     stats.total_bytes = 0;
-    
+
     burst_headers = (struct pcap_packet_header *)malloc(size * sizeof(burst_headers[0]));
     if (burst_headers == NULL)
     {
@@ -78,7 +79,7 @@ bool GpuHostNicShmem::dxlist_isreadable(int *err)
     return s == RTE_GPU_COMM_LIST_DONE;
 }
 
-struct rte_gpu_comm_list *GpuHostNicShmem::dxlist_read(struct pcap_packet_header* burst_header)
+struct rte_gpu_comm_list *GpuHostNicShmem::dxlist_read(struct pcap_packet_header *burst_header)
 {
     *burst_header = burst_headers[dxi];
     return &(comm_list[dxi]);
@@ -102,7 +103,7 @@ bool GpuHostNicShmem::rxlist_iswritable(int *err)
 int GpuHostNicShmem::rxlist_write(rte_mbuf **packets, int mbufsize)
 {
     struct timeval ts;
-    gettimeofday(&(ts), NULL);
+    gettimeofday(&(ts), NULL); /* TODO cambiar a dpdk (cambio de contexto) */
     burst_headers[rxi].ts_sec = ts.tv_sec;
     burst_headers[rxi].ts_usec = ts.tv_usec;
     return rte_gpu_comm_populate_list_pkts(&(comm_list[rxi]), packets, mbufsize);

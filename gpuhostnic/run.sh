@@ -9,6 +9,6 @@ then
     echo "Running program..."
     sudo bash -c 'source env.sh && ./build/gpu-hostnic -a 33:00.0 -a 36:00.0 -l 0-5 -- -o "test.pcap" -q 2'
 else
-    args="source env.sh && ./build/gpu-hostnic -a 33:00.0 -a 36:00.0 ${@:1}"
+    args="source env.sh && ./build/gpu-hostnic -a 33:00.0 -a 36:00.0 -l 0-5 -- -q 2 ${@:1}"
     sudo bash -c "$args"
 fi

@@ -29,7 +29,6 @@
 
 /* ===================== Macro  Definitions ===================== */
 
-
 /** Minimum printable ascii character */
 #define MIN_ASCII 0x20
 /** Maximum printable ascii character */
@@ -57,7 +56,6 @@
 
 #define RTE_PKTBUF_DATAROOM 2048U
 #define GPU_PAGE 65536U
-#define ELEMS 8192U
-#define BURST_ELEMS 4096U
-
+#define RTE_RXBURST_ALIGNSIZE 8
+#define MAX_BURSTSIZE 4096
 #endif

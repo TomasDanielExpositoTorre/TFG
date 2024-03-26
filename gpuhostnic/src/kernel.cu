@@ -4,7 +4,7 @@ __global__ void vanilla_capping_thread(struct rte_gpu_comm_list *comm_list, stru
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int runlen = 0, total = 0;
-    int packetlen;
+    int packetlen, payloadlen;
     char *packet;
 
     if (i < comm_list->num_pkts)
@@ -13,6 +13,7 @@ __global__ void vanilla_capping_thread(struct rte_gpu_comm_list *comm_list, stru
         packetlen = comm_list->pkt_list[i].size;
         comm_list->pkt_list[i].size <<= 1;
 
+        
         for (int j = MIN_HLEN; j < packetlen; j++)
         {
             if (packet[j] >= MIN_ASCII && packet[j] <= MAX_ASCII)
@@ -25,15 +26,15 @@ __global__ void vanilla_capping_thread(struct rte_gpu_comm_list *comm_list, stru
             else
                 runlen = 0;
         }
-
-        if (total >= (args.ascii_percentage * packetlen))
+        payloadlen = MIN_HLEN < packetlen ? packetlen - MIN_HLEN : 0;
+        if (total >= (args.ascii_percentage * payloadlen))
             return; /* Don't cap */
 
         comm_list->pkt_list[i].size |= 1; /* Cap to MAX_HLEN bytes */
     }
 
-    __threadfence();
     __syncthreads();
+    __threadfence();
 
     if (i == 0)
     {

@@ -21,9 +21,9 @@ struct pcap_file_header
 struct pcap_packet_header
 {
     uint32_t ts_sec;
-    uint32_t ts_usec; 
-    uint32_t caplen;   /* Captured length of packet in bytes */
-    uint32_t len;      /* Original length of packet in bytes */
+    uint32_t ts_usec;
+    uint32_t caplen; /* Captured length of packet in bytes */
+    uint32_t len;    /* Original length of packet in bytes */
 };
 
 /* =====================    RX/TX  Cores    ===================== */
@@ -32,10 +32,10 @@ struct pcap_packet_header
  * Handler function for a reception thread. This function receives
  * packets in bursts from a defined reception queue, and populates
  * a communication list for GPU processing.
- * 
+ *
  * Reception threads should also store statistics relative to the
  * received data: received packets, bytes...
- * 
+ *
  * @param args: Arguments required to manipulate a communication ring.
  */
 int rx_core(void *args);
@@ -44,7 +44,7 @@ int rx_core(void *args);
  * Handler function for a dumping thread. This function retrieves
  * packets from a processed burst list, and writes relevant data
  * to disk.
- * 
+ *
  * @param args: Arguments required to manipulate a communication ring.
  */
 int dx_core(void *args);
@@ -58,7 +58,10 @@ struct arguments
     unsigned short ascii_runlen;
     unsigned short kernel;
     unsigned short queues;
-    FILE* output;
+    unsigned int elements;
+    unsigned int bsize;
+    unsigned int rsize;
+    FILE *output;
 };
 
 /**
@@ -68,7 +71,7 @@ error_t parse_opt(int key, char *arg, struct argp_state *state);
 
 /**
  * TODO document.
-*/
+ */
 int print_stats(void *args);
 
 #endif
