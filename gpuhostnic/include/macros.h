@@ -49,6 +49,8 @@
 /** Maximum length of supported packet header, assuming 4 bytes for VLAN */
 #define MAX_HLEN RTE_ETHER_HDR_LEN + RTE_VLAN_HLEN + IP_HMAXLEN + TCP_HMAXLEN
 
+#define PCAP_USEC 0xA1B2C3D4
+#define PCAP_NSEC 0xA1B23C4D
 /* =====================  Temporal  Macros  ===================== */
 
 #define NIC_PORT 0

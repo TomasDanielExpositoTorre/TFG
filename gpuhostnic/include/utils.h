@@ -8,7 +8,7 @@
 /** Header for a pcap formatted file*/
 struct pcap_file_header
 {
-    const uint32_t magic_number = 0xA1B2C3D4;
+    const uint32_t magic_number = PCAP_NSEC;
     const uint16_t version_major = 2;
     const uint16_t version_minor = 4;
     const uint32_t thiszone = 0;
@@ -21,7 +21,7 @@ struct pcap_file_header
 struct pcap_packet_header
 {
     uint32_t ts_sec;
-    uint32_t ts_usec;
+    uint32_t ts_nsec;
     uint32_t caplen; /* Captured length of packet in bytes */
     uint32_t len;    /* Original length of packet in bytes */
 };
