@@ -104,7 +104,7 @@ int dx_core(void *args)
                 return EXIT_FAILURE;
             }
 
-        if (shm->dxlist_isreadable(&ret) == false)
+        if (killed(shm))
             break;
 
         comm_list = shm->dxlist_read(&burst_header);
@@ -113,6 +113,7 @@ int dx_core(void *args)
         {
             cap_packet = comm_list->pkt_list[i].size & 1;
             comm_list->pkt_list[i].size >>= 1;
+
 
             if (cap_packet && MAX_HLEN < comm_list->pkt_list[i].size)
                 burst_header.caplen = MAX_HLEN;
@@ -163,7 +164,7 @@ int rx_core(void *args)
         while (keep_alive(shm) && i < (shm->bsize - RTE_RXBURST_ALIGNSIZE))
             i += rte_eth_rx_burst(NIC_PORT, shm->id, &(packets[i]), (shm->bsize - i));
 
-        if (i == 0)
+        if (killed(shm))
             break;
 
         shm->logn.lock();

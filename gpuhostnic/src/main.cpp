@@ -61,11 +61,11 @@ int main(int argc, char **argv)
     struct rte_pktmbuf_extmem ext_mem;
     struct rte_eth_stats stats;
     struct arguments args = {
-        .ascii_percentage = 15,
+        .ascii_percentage = 45,
         .ascii_runlen = 15,
         .kernel = VANILLA_CAPPING_THREAD,
         .queues = 1,
-        .elements = 8192,
+        .elements = 81920,
         .bsize = 1024,
         .rsize = 1024,
         .output = NULL};
@@ -83,16 +83,9 @@ int main(int argc, char **argv)
         fail("Invalid EAL arguments\n");
     argc -= ret;
     argv += ret;
-
-    args.ascii_runlen = 15;
-    args.ascii_percentage = 45;
-    args.kernel = VANILLA_CAPPING_THREAD;
-    args.output = NULL;
-    args.queues = 1;
-    args.rsize = 1024;
-    args.bsize = 1024;
+    
     argp_parse(&argp, argc, argv, 0, 0, &args);
-
+    
     fwrite_unlocked(&file_header, sizeof(pcap_file_header), 1, args.output);
 
     shmem.reserve(args.queues);

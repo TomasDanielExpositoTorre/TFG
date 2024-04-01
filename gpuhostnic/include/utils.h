@@ -8,7 +8,8 @@
 /** Header for a pcap formatted file*/
 struct pcap_file_header
 {
-    const uint32_t magic_number = PCAP_NSEC;
+    // const uint32_t magic_number = PCAP_NSEC;
+    const uint32_t magic_number = PCAP_USEC;
     const uint16_t version_major = 2;
     const uint16_t version_minor = 4;
     const uint32_t thiszone = 0;

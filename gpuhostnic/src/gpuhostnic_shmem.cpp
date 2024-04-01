@@ -102,10 +102,16 @@ bool GpuHostNicShmem::rxlist_iswritable(int *err)
 
 int GpuHostNicShmem::rxlist_write(rte_mbuf **packets, int mbufsize)
 {
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    burst_headers[rxi].ts_sec = ts.tv_sec;
-    burst_headers[rxi].ts_nsec = ts.tv_nsec;
+    // struct timespec ts;
+    // clock_gettime(CLOCK_REALTIME, &ts);
+    // burst_headers[rxi].ts_sec = ts.tv_sec;
+    // burst_headers[rxi].ts_nsec = ts.tv_nsec;
+
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    burst_headers[rxi].ts_sec = tv.tv_sec;
+    burst_headers[rxi].ts_nsec = tv.tv_usec;
+
     return rte_gpu_comm_populate_list_pkts(&(comm_list[rxi]), packets, mbufsize);
 }
 
