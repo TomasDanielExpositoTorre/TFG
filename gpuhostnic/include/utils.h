@@ -8,8 +8,11 @@
 /** Header for a pcap formatted file*/
 struct pcap_file_header
 {
-    // const uint32_t magic_number = PCAP_NSEC;
+#ifdef PCAP_NANOSECONDS
+    const uint32_t magic_number = PCAP_NSEC;
+#else
     const uint32_t magic_number = PCAP_USEC;
+#endif
     const uint16_t version_major = 2;
     const uint16_t version_minor = 4;
     const uint32_t thiszone = 0;
@@ -39,7 +42,7 @@ struct pcap_packet_header
  *
  * @param args: Arguments required to manipulate a communication ring.
  */
-int rx_core(void *args);
+int gpu_rxcore(void *args);
 
 /**
  * Handler function for a dumping thread. This function retrieves
@@ -48,7 +51,11 @@ int rx_core(void *args);
  *
  * @param args: Arguments required to manipulate a communication ring.
  */
-int dx_core(void *args);
+int gpu_dxcore(void *args);
+
+int cpu_rxcore(void *args);
+int cpu_dxcore(void *args);
+int cpu_pxcore(void *args);
 
 /* =====================  Other  Functions  ===================== */
 
@@ -59,9 +66,9 @@ struct arguments
     unsigned short ascii_runlen;
     unsigned short kernel;
     unsigned short queues;
-    unsigned int elements;
-    unsigned int bsize;
-    unsigned int rsize;
+    unsigned int burst_size;
+    unsigned int ring_size;
+    bool gpu_workload;
     FILE *output;
 };
 

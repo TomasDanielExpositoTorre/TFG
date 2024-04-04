@@ -43,7 +43,7 @@
 
 /* =====================    More Headers    ===================== */
 #include "kernel.h"
-#include "gpuhostnic_shmem.h"
+#include "commring.h"
 #include "macros.h"
 #include "utils.h"
 

@@ -3,8 +3,9 @@
 /* ========================================================================= */
 /* =======================        ARGP CONFIG        ======================= */
 /* ========================================================================= */
-volatile bool GpuHostNicShmem::force_quit = false;
-std::mutex GpuHostNicShmem::write;
+volatile bool CommunicationRing::force_quit = false;
+std::mutex CommunicationRing::write;
+
 const char *argp_program_version = "Gpu HostNic 1.0";
 const char *argp_program_bug_address = "<tomas.exposito@estudiante.uam.es>";
 
@@ -14,9 +15,9 @@ static struct argp_option options[] = {
     {"kernel", 'k', "type", 0, "Kernel used to process packets."},
     {"output", 'o', "filename", 0, "File where captured packets will be dumped."},
     {"queues", 'q', "n", 0, "Number of queues to use for burst capture."},
-    {"elements", 'e', "size", 0, "Number of elements to create for the mempool."},
     {"burst", 'b', "size", 0, "Number of packets per burst."},
-    {"comm", 'c', "size", 0, "Number of bursts per communication list."},
+    {"comm", 'c', "size", 0, "Number of bursts per communication ring."},
+    {"workload", 'w', "type", 0, "0 for CPU, 1 for GPU"},
     {0}};
 
 static struct argp argp = {options, parse_opt, 0, NULL};
@@ -45,7 +46,7 @@ static struct rte_eth_conf conf_eth_port = {
 void sighandler(int signal)
 {
     printf("\nSIGNAL received, stopping packet capture...\n");
-    GpuHostNicShmem::force_quit = true;
+    CommunicationRing::force_quit = true;
 }
 
 /* ========================================================================= */
@@ -65,14 +66,14 @@ int main(int argc, char **argv)
         .ascii_runlen = 15,
         .kernel = VANILLA_CAPPING_THREAD,
         .queues = 1,
-        .elements = 81920,
-        .bsize = 1024,
-        .rsize = 1024,
+        .burst_size = 1024,
+        .ring_size = 1024,
+        .gpu_workload = false,
         .output = NULL};
-    std::vector<GpuHostNicShmem *> shmem;
+    std::vector<CommunicationRing *> shmem;
     uint16_t nb_rxd = 1024U, nb_txd = 1024U;
     uint8_t socket_id;
-    int ret, id, tmp, queues, time_elapsed;
+    int ret, id, tmp, min_cores, time_elapsed = 0;
 
     cudaProfilerStop();
     signal(SIGINT, sighandler);
@@ -83,14 +84,14 @@ int main(int argc, char **argv)
         fail("Invalid EAL arguments\n");
     argc -= ret;
     argv += ret;
-    
-    argp_parse(&argp, argc, argv, 0, 0, &args);
-    
-    fwrite_unlocked(&file_header, sizeof(pcap_file_header), 1, args.output);
 
-    shmem.reserve(args.queues);
-    for (int i = 0; i < args.queues; i++)
-        shmem.push_back(new GpuHostNicShmem(args, i));
+    argp_parse(&argp, argc, argv, 0, 0, &args);
+
+    min_cores = args.gpu_workload ? 2 * args.queues + 1 : 3 * args.queues + 1;
+    if (min_cores > (int)rte_lcore_count())
+        fail("Number of cores should be at least %d to suppport %d queues for this workload.\n", min_cores, args.queues);
+
+    fwrite_unlocked(&file_header, sizeof(pcap_file_header), 1, args.output);
 
     /* =======================     Device Setup     ======================= */
 
@@ -109,11 +110,11 @@ int main(int argc, char **argv)
 
     /* =======================  Mempool Allocation  ======================= */
 
-    ext_mem.elt_size = RTE_PKTBUF_DATAROOM + RTE_PKTMBUF_HEADROOM;                // packet size
-    ext_mem.buf_len = RTE_ALIGN_CEIL(args.elements * ext_mem.elt_size, GPU_PAGE); // buffer size
+    ext_mem.elt_size = RTE_PKTBUF_DATAROOM + RTE_PKTMBUF_HEADROOM;                                   // packet size
+    ext_mem.buf_len = RTE_ALIGN_CEIL(args.ring_size * args.burst_size * ext_mem.elt_size, GPU_PAGE); // buffer size
 
-    GpuHostNicShmem::shmem_register(&(ext_mem), &(dev_info), GPU_ID);
-    mpool_payload = rte_pktmbuf_pool_create_extbuf("payload_mpool", args.elements,
+    CommunicationRing::shmem_register(&(ext_mem), &(dev_info), args.gpu_workload);
+    mpool_payload = rte_pktmbuf_pool_create_extbuf("payload_mpool", args.ring_size * args.burst_size,
                                                    0, 0, ext_mem.elt_size,
                                                    rte_socket_id(), &ext_mem, 1);
     if (mpool_payload == NULL)
@@ -143,20 +144,40 @@ int main(int argc, char **argv)
 
     /* =======================         Main         ======================= */
 
-    for (id = 0, tmp = 0; id < args.queues; id++)
-    {
-        tmp = rte_get_next_lcore(tmp, 1, 0);
-        rte_eal_remote_launch(dx_core, (void *)(shmem[id]), tmp);
+    shmem.reserve(args.queues);
 
-        tmp = rte_get_next_lcore(tmp, 1, 0);
-        rte_eal_remote_launch(rx_core, (void *)(shmem[id]), tmp);
+    if (args.gpu_workload)
+    {
+        for (id = 0, tmp = 0; id < args.queues; id++)
+        {
+            shmem.push_back(new GpuCommunicationRing(args, id));
+
+            tmp = rte_get_next_lcore(tmp, 1, 0);
+            rte_eal_remote_launch(gpu_dxcore, (void *)(shmem[id]), tmp);
+
+            tmp = rte_get_next_lcore(tmp, 1, 0);
+            rte_eal_remote_launch(gpu_rxcore, (void *)(shmem[id]), tmp);
+        }
+    }
+    else
+    {
+        for (id = 0, tmp = 0; id < args.queues; id++)
+        {
+            shmem.push_back(new CpuCommunicationRing(args, id));
+
+            tmp = rte_get_next_lcore(tmp, 1, 0);
+            rte_eal_remote_launch(cpu_dxcore, (void *)(shmem[id]), tmp);
+
+            tmp = rte_get_next_lcore(tmp, 1, 0);
+            rte_eal_remote_launch(cpu_rxcore, (void *)(shmem[id]), tmp);
+
+            tmp = rte_get_next_lcore(tmp, 1, 0);
+            rte_eal_remote_launch(cpu_pxcore, (void *)(shmem[id]), tmp);
+        }
     }
 
-    queues = shmem.size();
-    time_elapsed = 0;
-
     sleep(5);
-    while (GpuHostNicShmem::force_quit == false)
+    while (CommunicationRing::force_quit == false)
     {
         rte_eth_stats_get(NIC_PORT, &stats);
         time_elapsed += 5;
@@ -167,7 +188,7 @@ int main(int argc, char **argv)
                time_elapsed / 60 % 60,
                time_elapsed % 60);
         puts("DPDK queue information");
-        for (id = 0; id < queues; id++)
+        for (id = 0; id < args.queues; id++)
             printf("Queue %d: %lu bytes, %lu packets received, %lu packets dropped\n",
                    id,
                    stats.q_ibytes[id],
@@ -176,15 +197,15 @@ int main(int argc, char **argv)
         puts("\nGpuHostNic queue information");
         for (auto &it : shmem)
         {
-            it->logn.lock();
-            it->logs.lock();
+            it->npackets.lock();
+            it->nbytes.lock();
             printf("Queue %d: %.2f pps, %.2f bps (total), %.2f bps (stored)\n",
                    it->id,
                    (float)(it->stats.packets) / time_elapsed,
                    (float)(it->stats.total_bytes * 8) / time_elapsed,
                    (float)(it->stats.stored_bytes * 8) / time_elapsed);
-            it->logs.unlock();
-            it->logn.unlock();
+            it->nbytes.unlock();
+            it->npackets.unlock();
         }
         sleep(5);
     }
@@ -195,7 +216,7 @@ int main(int argc, char **argv)
     puts("\n---------------------------------------------------------------------");
     puts("Exiting program...");
     puts("DPDK queue information");
-    for (id = 0; id < queues; id++)
+    for (id = 0; id < args.queues; id++)
         printf("Queue %d: %lu bytes, %lu packets received, %lu packets dropped\n",
                id,
                stats.q_ibytes[id],
@@ -209,10 +230,9 @@ int main(int argc, char **argv)
                it->stats.total_bytes,
                it->stats.stored_bytes);
 
-
     /* =======================       Cleaning       ======================= */
 
-    GpuHostNicShmem::shmem_unregister(&(ext_mem), &(dev_info), GPU_ID, NIC_PORT);
+    CommunicationRing::shmem_unregister(&(ext_mem), &(dev_info), NIC_PORT, args.gpu_workload);
     shmem.clear();
 
     return EXIT_SUCCESS;

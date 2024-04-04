@@ -1,2 +1,2 @@
-sources = files('main.cpp', 'gpuhostnic_shmem.cpp', 'utils.cpp')
+sources = files('main.cpp', 'commring.cpp', 'utils.cpp')
 kernel = files('kernel.cu')
