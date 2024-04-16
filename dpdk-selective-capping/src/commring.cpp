@@ -5,25 +5,23 @@ CommunicationRing::CommunicationRing(struct arguments args, int i)
     pcap_fp = args.output;
     ring_size = args.ring_size;
     burst_size = args.burst_size;
+    this->args = args;
     id = i;
 
-    rxi = dxi = 0;
-    stats.packets = 0;
-    stats.stored_bytes = 0;
-    stats.total_bytes = 0;
     self_quit = false;
+    rxi = dxi = 0;
+    stats = {
+        .packets = 0,
+        .total_bytes = 0,
+        .stored_bytes = 0,
+    };
 
-    burst_headers = (struct pcap_packet_header *)malloc(ring_size * sizeof(burst_headers[0]));
-    if (burst_headers == NULL)
+    headers = (struct pcap_packet_header *)malloc(ring_size * burst_size * sizeof(headers[0]));
+    if (headers == NULL)
     {
         fprintf(stderr, "Failed to create memory for burst packet headers\n");
         exit(EXIT_FAILURE);
     }
-}
-
-CommunicationRing::~CommunicationRing()
-{
-    free(burst_headers);
 }
 
 /* ==========================  STATIC  FUNCTIONS  ========================== */
@@ -66,10 +64,6 @@ GpuCommunicationRing::GpuCommunicationRing(struct arguments args, int i) : Commu
 {
     cudaError_t ret;
 
-    kargs.ascii_percentage = args.ascii_percentage;
-    kargs.ascii_runlen = args.ascii_runlen;
-    kargs.kernel = args.kernel;
-
     if ((comm_list = rte_gpu_comm_create_list(GPU_ID, ring_size)) == NULL)
         rte_panic("rte_gpu_comm_create_list");
 
@@ -78,42 +72,72 @@ GpuCommunicationRing::GpuCommunicationRing(struct arguments args, int i) : Commu
         fprintf(stderr, "Cuda failed with %s \n", cudaGetErrorString(ret));
         exit(EXIT_FAILURE);
     }
+
+    if (rte_gpu_mem_register(GPU_ID, burst_size * ring_size * sizeof(headers[0]), headers) < 0)
+        rte_exit(EXIT_FAILURE, "Unable to gpudev register packet headers");
 }
 
 GpuCommunicationRing::~GpuCommunicationRing()
 {
     cudaStreamDestroy(stream);
     rte_gpu_comm_destroy_list(comm_list, ring_size);
+    rte_gpu_mem_unregister(GPU_ID, headers);
+    free(headers);
 }
 
 /* ==========================  RXLIST  FUNCTIONS  ========================== */
 
-bool GpuCommunicationRing::rxlist_iswritable(int *err)
+bool GpuCommunicationRing::rxlist_iswritable()
 {
     enum rte_gpu_comm_list_status s;
-    *err = rte_gpu_comm_get_status(&comm_list[rxi], &s);
+    int ret = rte_gpu_comm_get_status(&comm_list[rxi], &s);
+    if (ret != 0)
+    {
+        GpuCommunicationRing::force_quit = true;
+        fail("[R-Core %d] rte_gpu_comm_get_status error: %s\n", id, rte_strerror(ret));
+    }
+
     return s == RTE_GPU_COMM_LIST_FREE;
 }
 
-int GpuCommunicationRing::rxlist_write(rte_mbuf **packets, int mbufsize)
+int GpuCommunicationRing::rxlist_write()
 {
+    int i = 0;
+    while (keep_alive(this) && i < (burst_size - RTE_RXBURST_ALIGNSIZE))
+        i += rte_eth_rx_burst(NIC_PORT, id, &(burst[i]), (burst_size - i));
+
 #ifdef PCAP_NANOSECONDS
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    burst_headers[rxi].ts_sec = ts.tv_sec;
-    burst_headers[rxi].ts_nsec = ts.tv_nsec;
+    headers[rxi * burst_size].ts_sec = ts.tv_sec;
+    headers[rxi * burst_size].ts_nsec = ts.tv_nsec;
 #else
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    burst_headers[rxi].ts_sec = tv.tv_sec;
-    burst_headers[rxi].ts_nsec = tv.tv_usec;
+    headers[rxi * burst_size].ts_sec = tv.tv_sec;
+    headers[rxi * burst_size].ts_nsec = tv.tv_usec;
 #endif
-    return rte_gpu_comm_populate_list_pkts(&(comm_list[rxi]), packets, mbufsize);
+
+    rxlog.lock();
+    stats.packets += i;
+    for (int j = 0; j < i; j++)
+        stats.total_bytes += burst[j]->data_len;
+    rxlog.unlock();
+
+    return i;
 }
 
-void GpuCommunicationRing::rxlist_process(int blocks, int threads)
+void GpuCommunicationRing::rxlist_process(int npackets)
 {
-    launch_kernel(&(comm_list[rxi]), blocks, threads, stream, kargs);
+    int ret = rte_gpu_comm_populate_list_pkts(&(comm_list[rxi]), burst, npackets);
+
+    if (ret != 0)
+    {
+        GpuCommunicationRing::force_quit = true;
+        fail("[R-Core %d] rte_gpu_comm_get_status error: %s\n", id, rte_strerror(ret));
+    }
+
+    launch_kernel(&(comm_list[rxi]), 1, burst_size, stream, args, (headers + rxi * burst_size));
     rxi = (rxi + 1) % ring_size;
 }
 
@@ -126,17 +150,24 @@ bool GpuCommunicationRing::dxlist_isempty()
     return s == RTE_GPU_COMM_LIST_FREE;
 }
 
-bool GpuCommunicationRing::dxlist_isreadable(int *err)
+bool GpuCommunicationRing::dxlist_isreadable()
 {
     enum rte_gpu_comm_list_status s;
-    *err = rte_gpu_comm_get_status(&comm_list[dxi], &s);
+    int ret = rte_gpu_comm_get_status(&comm_list[dxi], &s);
+    if (ret != 0)
+    {
+        GpuCommunicationRing::force_quit = true;
+        fail("[R-Core %d] rte_gpu_comm_get_status error: %s\n", id, rte_strerror(ret));
+    }
     return s == RTE_GPU_COMM_LIST_DONE;
 }
 
-struct rte_gpu_comm_list *GpuCommunicationRing::dxlist_read(struct pcap_packet_header *burst_header)
+struct rte_mbuf **GpuCommunicationRing::dxlist_read(struct pcap_packet_header **pkt_headers, int *num_pkts)
 {
-    *burst_header = burst_headers[dxi];
-    return &(comm_list[dxi]);
+    *(pkt_headers) = headers + burst_size * dxi;
+    *num_pkts = comm_list[dxi].num_pkts;
+
+    return comm_list[dxi].mbufs;
 }
 
 void GpuCommunicationRing::dxlist_clean()
@@ -152,9 +183,6 @@ void GpuCommunicationRing::dxlist_clean()
 
 CpuCommunicationRing::CpuCommunicationRing(struct arguments args, int i) : CommunicationRing(args, i)
 {
-    cargs.ascii_percentage = args.ascii_percentage;
-    cargs.ascii_runlen = args.ascii_runlen;
-
     pxi = 0;
 
     nbpackets = (int *)malloc(ring_size * sizeof(nbpackets[0]));
@@ -189,6 +217,7 @@ CpuCommunicationRing::~CpuCommunicationRing()
     free(packet_ring);
     free(nbpackets);
     free(burstate);
+    free(headers);
 }
 
 /* ==========================  RXLIST  FUNCTIONS  ========================== */
@@ -208,22 +237,28 @@ int CpuCommunicationRing::rxlist_write()
 #ifdef PCAP_NANOSECONDS
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    burst_headers[rxi].ts_sec = ts.tv_sec;
-    burst_headers[rxi].ts_nsec = ts.tv_nsec;
+    headers[rxi * burst_size].ts_sec = ts.tv_sec;
+    headers[rxi * burst_size].ts_nsec = ts.tv_nsec;
 #else
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    burst_headers[rxi].ts_sec = tv.tv_sec;
-    burst_headers[rxi].ts_nsec = tv.tv_usec;
+    headers[rxi * burst_size].ts_sec = tv.tv_sec;
+    headers[rxi * burst_size].ts_nsec = tv.tv_usec;
 #endif
 
-    nbpackets[rxi] = i;
+    rxlog.lock();
+    stats.packets += i;
+
+    for (int j = 0; j < i; j++)
+        stats.total_bytes += packet_ring[rxi][j]->data_len;
+    rxlog.unlock();
 
     return i;
 }
 
-void CpuCommunicationRing::rxlist_process()
+void CpuCommunicationRing::rxlist_process(int npackets)
 {
+    nbpackets[rxi] = npackets;
     burstate[rxi] = BURST_PROCESSING;
     rxi = (rxi + 1) % ring_size;
 }
@@ -240,9 +275,10 @@ bool CpuCommunicationRing::pxlist_isready()
     return burstate[pxi] == BURST_PROCESSING;
 }
 
-struct rte_mbuf **CpuCommunicationRing::pxlist_read(int *num_pkts)
+struct rte_mbuf **CpuCommunicationRing::pxlist_read(int *num_pkts, struct pcap_packet_header **pkt_headers)
 {
     *num_pkts = nbpackets[pxi];
+    *(pkt_headers) = headers + pxi * burst_size;
     return packet_ring[pxi];
 }
 
@@ -264,9 +300,9 @@ bool CpuCommunicationRing::dxlist_isreadable()
     return burstate[dxi] == BURST_DONE;
 }
 
-struct rte_mbuf **CpuCommunicationRing::dxlist_read(struct pcap_packet_header *burst_header, int *num_pkts)
+struct rte_mbuf **CpuCommunicationRing::dxlist_read(struct pcap_packet_header **pkt_headers, int *num_pkts)
 {
-    *burst_header = burst_headers[dxi];
+    *(pkt_headers) = headers + burst_size * dxi;
     *num_pkts = nbpackets[dxi];
     return packet_ring[dxi];
 }

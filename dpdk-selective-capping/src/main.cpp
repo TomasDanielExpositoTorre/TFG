@@ -60,7 +60,6 @@ int main(int argc, char **argv)
     struct rte_gpu_info gpu_info;
     struct rte_mempool *mpool_payload;
     struct rte_pktmbuf_extmem ext_mem;
-    struct rte_eth_stats stats;
     struct arguments args = {
         .ascii_percentage = 45,
         .ascii_runlen = 15,
@@ -69,11 +68,12 @@ int main(int argc, char **argv)
         .burst_size = 1024,
         .ring_size = 1024,
         .gpu_workload = false,
-        .output = NULL};
+        .output = NULL,
+    };
     std::vector<CommunicationRing *> shmem;
     uint16_t nb_rxd = 1024U, nb_txd = 1024U;
     uint8_t socket_id;
-    int ret, id, tmp, min_cores, time_elapsed = 0;
+    int ret, id, tmp, min_cores;
 
     cudaProfilerStop();
     signal(SIGINT, sighandler);
@@ -153,10 +153,10 @@ int main(int argc, char **argv)
             shmem.push_back(new GpuCommunicationRing(args, id));
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(gpu_dxcore, (void *)(shmem[id]), tmp);
+            rte_eal_remote_launch(dxcore, (void *)(shmem[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(gpu_rxcore, (void *)(shmem[id]), tmp);
+            rte_eal_remote_launch(rxcore, (void *)(shmem[id]), tmp);
         }
     }
     else
@@ -166,69 +166,17 @@ int main(int argc, char **argv)
             shmem.push_back(new CpuCommunicationRing(args, id));
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(cpu_dxcore, (void *)(shmem[id]), tmp);
+            rte_eal_remote_launch(dxcore, (void *)(shmem[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(cpu_rxcore, (void *)(shmem[id]), tmp);
+            rte_eal_remote_launch(rxcore, (void *)(shmem[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(cpu_pxcore, (void *)(shmem[id]), tmp);
+            rte_eal_remote_launch(pxcore, (void *)(shmem[id]), tmp);
         }
     }
 
-    sleep(5);
-    while (CommunicationRing::force_quit == false)
-    {
-        rte_eth_stats_get(NIC_PORT, &stats);
-        time_elapsed += 5;
-
-        puts("\n---------------------------------------------------------------------");
-        printf("\nTime elapsed: %dh,%dm,%ds\n",
-               time_elapsed / 3600,
-               time_elapsed / 60 % 60,
-               time_elapsed % 60);
-        puts("DPDK queue information");
-        for (id = 0; id < args.queues; id++)
-            printf("Queue %d: %lu bytes, %lu packets received, %lu packets dropped\n",
-                   id,
-                   stats.q_ibytes[id],
-                   stats.q_ipackets[id],
-                   stats.q_errors[id]);
-        puts("\nGpuHostNic queue information");
-        for (auto &it : shmem)
-        {
-            it->npackets.lock();
-            it->nbytes.lock();
-            printf("Queue %d: %.2f pps, %.2f bps (total), %.2f bps (stored)\n",
-                   it->id,
-                   (float)(it->stats.packets) / time_elapsed,
-                   (float)(it->stats.total_bytes * 8) / time_elapsed,
-                   (float)(it->stats.stored_bytes * 8) / time_elapsed);
-            it->nbytes.unlock();
-            it->npackets.unlock();
-        }
-        sleep(5);
-    }
-
-    RTE_WAIT_WORKERS(id, ret);
-    rte_eth_stats_get(NIC_PORT, &stats);
-
-    puts("\n---------------------------------------------------------------------");
-    puts("Exiting program...");
-    puts("DPDK queue information");
-    for (id = 0; id < args.queues; id++)
-        printf("Queue %d: %lu bytes, %lu packets received, %lu packets dropped\n",
-               id,
-               stats.q_ibytes[id],
-               stats.q_ipackets[id],
-               stats.q_errors[id]);
-    puts("\nGpuHostNic queue information");
-    for (auto &it : shmem)
-        printf("Queue %d: %lu packets, %lu bytes (total), %lu bytes (stored)\n",
-               it->id,
-               it->stats.packets,
-               it->stats.total_bytes,
-               it->stats.stored_bytes);
+    mastercore_workload(shmem, args);
 
     /* =======================       Cleaning       ======================= */
 

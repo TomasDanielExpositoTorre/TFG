@@ -42,9 +42,9 @@
 #include <cuda_profiler_api.h>
 
 /* =====================    More Headers    ===================== */
+#include "types.h"
 #include "kernel.h"
 #include "commring.h"
-#include "macros.h"
 #include "utils.h"
 
 #endif

@@ -16,16 +16,6 @@ enum kernel_type
 };
 
 /**
- * Arguments to be used by a kernel for packet processing
- */
-struct kernel_arguments
-{
-    unsigned short ascii_percentage; /* A number from 1-100 for the percentage detection scheme */
-    unsigned short ascii_runlen;     /* Consecutive bytes for the run detection scheme*/
-    unsigned short kernel;           /* Kernel to launch for packet processing */
-};
-
-/**
  * Launches a kernel to process an incoming packet burst from the received communication list.
  *
  * @param comm_list: Communication list containing the packet burst.
@@ -34,5 +24,7 @@ struct kernel_arguments
  * @param stream: CUDA stream for concurrent kernel calls.
  * @param kargs: arguments sent to the kernel by value.
  */
-void launch_kernel(struct rte_gpu_comm_list *comm_list, int blocks, int threads, cudaStream_t stream, struct kernel_arguments kargs);
+void launch_kernel(struct rte_gpu_comm_list *comm_list, int blocks, int threads,
+                   cudaStream_t stream, struct arguments args,
+                   struct pcap_packet_header *headers);
 #endif

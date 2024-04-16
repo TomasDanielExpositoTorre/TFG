@@ -63,105 +63,144 @@ error_t parse_opt(int key, char *arg, struct argp_state *state)
         break;
     case 'w':
         args->gpu_workload = atoi(arg) % 2;
-    break;
+        break;
     default:
         return ARGP_ERR_UNKNOWN;
     }
     return 0;
 }
 
+void mastercore_workload(std::vector<CommunicationRing *> &shmem, struct arguments args)
+{
+    struct rte_eth_stats stats;
+    int id, ret, time_elapsed = 0;
+    float pps, sbps, tbps;
+    char su, tu;
+
+    sleep(5);
+    while (CommunicationRing::force_quit == false)
+    {
+        rte_eth_stats_get(NIC_PORT, &stats);
+        time_elapsed += 5;
+
+        puts("\n---------------------------------------------------------------------");
+        printf("\nTime elapsed: %02d:%02d:%02d\n",
+               time_elapsed / 3600,
+               time_elapsed / 60 % 60,
+               time_elapsed % 60);
+        puts("Capture ring information");
+        for (id = 0; id < args.queues; id++)
+            printf("Queue %d: %lu bytes, %lu packets received, %lu packets dropped\n",
+                   id,
+                   stats.q_ibytes[id],
+                   stats.q_ipackets[id],
+                   stats.q_errors[id]);
+
+        puts("\nProcessing ring information");
+        for (auto &it : shmem)
+        {
+            it->rxlog.lock();
+            it->dxlog.lock();
+            pps = it->stats.packets;
+            tbps = it->stats.total_bytes;
+            sbps = it->stats.stored_bytes;
+            it->dxlog.unlock();
+            it->rxlog.unlock();
+
+            pps /= time_elapsed;
+            tbps = (tbps * 8) / time_elapsed;
+            sbps = (sbps * 8) / time_elapsed;
+
+            speed_format(tbps, tu);
+            speed_format(sbps, su);
+
+            printf("Queue %d: %.2f pps, %.2f %cbps (total), %.2f %cbps (stored)\n",
+                   it->id, pps, tbps, tu, sbps, su);
+        }
+        sleep(5);
+    }
+
+    RTE_WAIT_WORKERS(id, ret);
+    rte_eth_stats_get(NIC_PORT, &stats);
+
+    puts("\n---------------------------------------------------------------------");
+    puts("Exiting program...");
+    puts("Capture ring information");
+    for (id = 0; id < args.queues; id++)
+        printf("Queue %d: %lu bytes, %lu packets received, %lu packets dropped\n",
+               id,
+               stats.q_ibytes[id],
+               stats.q_ipackets[id],
+               stats.q_errors[id]);
+    puts("\nProcessing ring information");
+    for (auto &it : shmem)
+        printf("Queue %d: %lu packets, %lu bytes (total), %lu bytes (stored)\n",
+               it->id,
+               it->stats.packets,
+               it->stats.total_bytes,
+               it->stats.stored_bytes);
+}
+
 /* ========================================================================= */
 /* ===========================   GPU  WORKLOAD   =========================== */
 /* ========================================================================= */
 
-int gpu_rxcore(void *args)
+int rxcore(void *args)
 {
-    GpuCommunicationRing *shm = (GpuCommunicationRing *)args;
-    struct rte_mbuf *packets[MAX_BURSTSIZE];
-    int i, ret;
+    CommunicationRing *shm = (CommunicationRing *)args;
+    int i;
 
-    printf("[GPU-RX %d] Starting...\n", shm->id);
-    cudaSetDevice(GPU_ID);
+    if (shm->args.gpu_workload == true)
+        cudaSetDevice(GPU_ID);
+    printf("[%cPU-RX %d] Starting...\n", shm->args.gpu_workload ? 'G' : 'C', shm->id);
 
     while (CommunicationRing::force_quit == false)
     {
-        i = 0;
+        while (shm->rxlist_iswritable() == false)
+            ;
 
-        while (shm->rxlist_iswritable(&ret) == false)
-            if (ret != 0)
-            {
-                fprintf(stderr, "[R-Core %d] rte_gpu_comm_get_status error: %s\n", shm->id, rte_strerror(ret));
-                GpuCommunicationRing::force_quit = true;
-                return EXIT_FAILURE;
-            }
-
-        /* Populate burst */
-        while (keep_alive(shm) && i < (shm->burst_size - RTE_RXBURST_ALIGNSIZE))
-            i += rte_eth_rx_burst(NIC_PORT, shm->id, &(packets[i]), (shm->burst_size - i));
-
-        if (i == 0)
+        if ((i = shm->rxlist_write()) == 0)
             break;
 
-        shm->npackets.lock();
-        shm->stats.packets += i;
-        shm->npackets.unlock();
-
-        if (shm->rxlist_write(packets, i) != 0)
-        {
-            fprintf(stderr, "[R-Core %d] rte_gpu_comm_populate_list_pkts error: %s\n", shm->id, rte_strerror(ret));
-            GpuCommunicationRing::force_quit = true;
-            return EXIT_FAILURE;
-        }
-        shm->rxlist_process(ceil(i, 32), 32);
+        shm->rxlist_process(i);
     }
     shm->self_quit = true;
     return EXIT_SUCCESS;
 }
 
-int gpu_dxcore(void *args)
+int dxcore(void *args)
 {
     GpuCommunicationRing *shm = (GpuCommunicationRing *)args;
-    struct rte_gpu_comm_list *comm_list;
-    struct pcap_packet_header burst_header;
-    bool cap_packet;
-    int ret = 0;
+    struct rte_mbuf **packets;
+    struct pcap_packet_header *headers;
+    int num_pkts;
 
-    printf("[GPU-DX %d] Starting...\n", shm->id);
-    cudaSetDevice(GPU_ID);
+    if (shm->args.gpu_workload == true)
+        cudaSetDevice(GPU_ID);
+    printf("[%cPU-DX %d] Starting...\n", shm->args.gpu_workload ? 'G' : 'C', shm->id);
 
     while (shm->self_quit == false || shm->dxlist_isempty() == false)
     {
-        while (shm->dxlist_isreadable(&ret) == false && !(shm->self_quit == true && shm->dxlist_isempty()))
-            if (ret != 0)
-            {
-                fprintf(stderr, "[D-Core %d] rte_gpu_comm_get_status error: %s\n", shm->id, rte_strerror(ret));
-                GpuCommunicationRing::force_quit = true;
-                return EXIT_FAILURE;
-            }
+        while (shm->dxlist_isreadable() == false && !(shm->self_quit == true && shm->dxlist_isempty()))
+            ;
 
         if (shm->self_quit == true && shm->dxlist_isempty())
             break;
 
-        comm_list = shm->dxlist_read(&burst_header);
+        packets = shm->dxlist_read(&headers, &num_pkts);
 
-        for (uint32_t i = 0; i < comm_list->num_pkts; i++)
-        {
-            cap_packet = comm_list->pkt_list[i].size & 1;
-            comm_list->pkt_list[i].size >>= 1;
-            burst_header.caplen = (cap_packet && MAX_HLEN < comm_list->pkt_list[i].size) ? MAX_HLEN : comm_list->pkt_list[i].size;
-            burst_header.len = comm_list->pkt_list[i].size;
+        shm->dxlog.lock();
+        for (int i = 0; i < num_pkts; i++)
+            shm->stats.stored_bytes += headers[i].caplen;
+        shm->dxlog.unlock();
 
-            shm->nbytes.lock();
-            shm->stats.total_bytes += burst_header.len;
-            shm->stats.stored_bytes += burst_header.caplen;
-            shm->nbytes.unlock();
-
-            GpuCommunicationRing::write.lock();
-            fwrite_unlocked(&(burst_header), sizeof(pcap_packet_header), 1, shm->pcap_fp);
-            fwrite_unlocked((const void *)comm_list->pkt_list[i].addr, burst_header.caplen, 1, shm->pcap_fp);
-            GpuCommunicationRing::write.unlock();
-        }
-        rte_pktmbuf_free_bulk(comm_list->mbufs, comm_list->num_pkts);
+        // CommunicationRing::write.lock();
+        // for (int i = 0; i < num_pkts; i++)
+        // {
+        //     fwrite_unlocked(&headers[i], sizeof(pcap_packet_header), 1, shm->pcap_fp);
+        //     fwrite_unlocked((const void *)packets[i]->buf_addr, headers[i].caplen, 1, shm->pcap_fp);
+        // }
+        // CommunicationRing::write.unlock();
         shm->dxlist_clean();
     }
     return EXIT_SUCCESS;
@@ -170,37 +209,13 @@ int gpu_dxcore(void *args)
 /* ===========================   CPU  WORKLOAD   =========================== */
 /* ========================================================================= */
 
-int cpu_rxcore(void *args)
-{
-    CpuCommunicationRing *shm = (CpuCommunicationRing *)args;
-    int i;
-
-    printf("[CPU-RX %d] Starting...\n", shm->id);
-
-    while (CpuCommunicationRing::force_quit == false)
-    {
-        while (shm->rxlist_iswritable() == false)
-            ;
-
-        if ((i = shm->rxlist_write()) == 0)
-            break;
-
-        shm->npackets.lock();
-        shm->stats.packets += i;
-        shm->npackets.unlock();
-
-        shm->rxlist_process();
-    }
-    shm->self_quit = true;
-    return EXIT_SUCCESS;
-}
-
-int cpu_pxcore(void *args)
+int pxcore(void *args)
 {
     CpuCommunicationRing *shm = (CpuCommunicationRing *)args;
     struct rte_mbuf **packets;
+    struct pcap_packet_header *headers;
     char *packet;
-    int num_pkts, packetlen, runlen, total;
+    int num_pkts, psize, runlen, total;
 
     printf("[CPU-PX %d] Starting...\n", shm->id);
 
@@ -212,73 +227,38 @@ int cpu_pxcore(void *args)
         if (shm->self_quit == true && shm->pxlist_isempty())
             break;
 
-        packets = shm->pxlist_read(&num_pkts);
+        packets = shm->pxlist_read(&num_pkts, &headers);
 
         for (int i = 0; i < num_pkts; i++)
         {
             packet = (char *)(packets[i]->buf_addr);
-            packetlen = packets[i]->data_len;
-            packets[i]->data_len <<= 1;
+            psize = packets[i]->data_len;
+            headers[i] = headers[0];
+            headers[i].len = psize;
+            total = 0;
+            runlen = 0;
 
-            for (int j = MIN_HLEN; j < packetlen; j++)
+            for (int j = MIN_HLEN; j < psize; j++)
             {
                 if (packet[j] >= MIN_ASCII && packet[j] <= MAX_ASCII)
                 {
                     runlen++;
                     total += 100;
-                    if (runlen == shm->cargs.ascii_runlen)
-                        j = packetlen;
+                    if (runlen == shm->args.ascii_runlen)
+                        j = psize;
                 }
                 else
                     runlen = 0;
             }
 
-            packets[i]->data_len |= (runlen < shm->cargs.ascii_runlen || total < (shm->cargs.ascii_percentage * (packetlen - MIN_HLEN)));
+            if (MAX_HLEN > psize || runlen == shm->args.ascii_runlen || total >= (shm->args.ascii_percentage * (psize - MIN_HLEN)))
+                    headers[i].caplen = psize;
+            else
+                headers[i].caplen = MAX_HLEN;
         }
-
+        
         shm->pxlist_done();
     }
     return EXIT_SUCCESS;
 }
 
-int cpu_dxcore(void *args)
-{
-    CpuCommunicationRing *shm = (CpuCommunicationRing *)args;
-    struct rte_mbuf **packets;
-    struct pcap_packet_header burst_header;
-    bool cap_packet;
-    int num_pkts;
-
-    printf("[CPU-DX %d] Starting...\n", shm->id);
-
-    while (shm->self_quit == false || shm->dxlist_isempty() == false)
-    {
-        while (shm->dxlist_isreadable() == false && !(shm->self_quit == true && shm->dxlist_isempty()))
-            ;
-
-        if (shm->self_quit == true && shm->dxlist_isempty())
-            break;
-
-        packets = shm->dxlist_read(&burst_header, &num_pkts);
-
-        for (int i = 0; i < num_pkts; i++)
-        {
-            cap_packet = packets[i]->data_len & 1;
-            packets[i]->data_len >>= 1;
-            burst_header.caplen = (cap_packet && MAX_HLEN < packets[i]->data_len) ? MAX_HLEN : packets[i]->data_len;
-            burst_header.len = packets[i]->data_len;
-
-            shm->nbytes.lock();
-            shm->stats.total_bytes += burst_header.len;
-            shm->stats.stored_bytes += burst_header.caplen;
-            shm->nbytes.unlock();
-
-            CommunicationRing::write.lock();
-            fwrite_unlocked(&(burst_header), sizeof(pcap_packet_header), 1, shm->pcap_fp);
-            fwrite_unlocked((const void *)packets[i]->buf_addr, burst_header.caplen, 1, shm->pcap_fp);
-            CommunicationRing::write.unlock();
-        }
-        shm->dxlist_clean();
-    }
-    return EXIT_SUCCESS;
-}
