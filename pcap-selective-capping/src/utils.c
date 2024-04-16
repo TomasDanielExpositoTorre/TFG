@@ -49,30 +49,43 @@ int header_len(const unsigned char *packet, bpf_u_int32 caplen)
 void write_log(struct logging_info *log)
 {
     int hours, minutes;
+    float sbps, cbps, tbps, pps;
+    char su, cu, tu;
     log->elapsed_time += 5;
     minutes = log->elapsed_time / 60;
     hours = minutes / 60;
 
     pthread_mutex_lock(&(log->log_mutex));
-    fprintf(stdout, "[Logging] (%dh,%dm,%ds)\t%.2f pps\t%.2f bps (s)\t%.2f bps (c)\t%.2f bps (t)\n",
-            hours, minutes % 60, log->elapsed_time % 60,
-            (float)(log->packets) / log->elapsed_time,
-            (log->stored_bytes * 8.0) / log->elapsed_time,
-            (log->captured_bytes * 8.0) / log->elapsed_time,
-            (log->total_bytes * 8.0) / log->elapsed_time);
+    pps = (float)(log->packets) / log->elapsed_time;
+    sbps = (log->stored_bytes * 8.0) / log->elapsed_time;
+    cbps = (log->captured_bytes * 8.0) / log->elapsed_time;
+    tbps = (log->total_bytes * 8.0) / log->elapsed_time;
     pthread_mutex_unlock(&(log->log_mutex));
+
+    su = (sbps > GIGABIT) ? 'G' : (sbps > MEGABIT) ? 'M'
+                                                   : 'K';
+    cu = (cbps > GIGABIT) ? 'G' : (cbps > MEGABIT) ? 'M'
+                                                   : 'K';
+    tu = (tbps > GIGABIT) ? 'G' : (tbps > MEGABIT) ? 'M'
+                                                   : 'K';
+
+    sbps = (sbps > GIGABIT) ? (sbps / GIGABIT) : (sbps > MEGABIT) ? (sbps / MEGABIT)
+                                                                  : (sbps / KILOBIT);
+    cbps = (cbps > GIGABIT) ? (cbps / GIGABIT) : (cbps > MEGABIT) ? (cbps / MEGABIT)
+                                                                  : (cbps / KILOBIT);
+    tbps = (tbps > GIGABIT) ? (tbps / GIGABIT) : (tbps > MEGABIT) ? (tbps / MEGABIT)
+                                                                  : (tbps / KILOBIT);
+
+    fprintf(stdout, "[Logging] (%02d:%02d:%02d)    %.2f pps\t%.2f %cbps (stored)\t%.2f %cbps (captured)\t%.2f %cbps (total)\n",
+            hours, minutes % 60, log->elapsed_time % 60, pps, sbps, su, cbps, cu, tbps, tu);
 }
 
-#ifndef __OPTIMIZED
-int vanilla_capping(struct arguments args, const struct pcap_pkthdr *header, const unsigned char *packet)
+// #ifndef __OPTIMIZED
+int selective_capping(struct arguments args, const struct pcap_pkthdr *header, const unsigned char *packet)
 {
-    int runlen = 0, total = 0, hlen;
+    int runlen = 0, total = 0;
 
-    /* Skip the packet on error */
-    if ((hlen = header_len(packet, header->caplen)) < 0)
-        return hlen;
-
-    for (int i = hlen; i < header->caplen; i++)
+    for (int i = MIN_HLEN; i < header->caplen; i++)
     {
         if (packet[i] >= MIN_ASCII && packet[i] <= MAX_ASCII)
         {
@@ -88,22 +101,14 @@ int vanilla_capping(struct arguments args, const struct pcap_pkthdr *header, con
     if (total >= (args.ascii_percentage * header->caplen))
         return NO_CAPPING;
 
-    return hlen;
+    return (MAX_HLEN > header->caplen) ? header->caplen : MAX_HLEN;
 }
-#else
+// #else
 int optimized_capping(struct arguments args, const struct pcap_pkthdr *header, const unsigned char *packet)
 {
-    int runlen = 0, total = 0, seen = 0, hlen;
+    int runlen = 0, total = 0, seen = 0;
 
-    /* Skip the packet on error */
-    if ((hlen = header_len(packet, header->caplen)) < 0)
-        return hlen;
-
-    /* Cap if payload cannot reach threshold */
-    if (hlen + args.ascii_runlen - 1 > header->caplen)
-        return hlen;
-
-    for (int i = hlen + args.ascii_runlen - 1; i >= hlen && i < header->caplen; i--, seen++)
+    for (int i = MIN_HLEN + args.ascii_runlen - 1; i >= MIN_HLEN && i < header->caplen; i--, seen++)
     {
         if (packet[i] >= MIN_ASCII && packet[i] <= MAX_ASCII)
         {
@@ -122,15 +127,15 @@ int optimized_capping(struct arguments args, const struct pcap_pkthdr *header, c
     if (total >= (args.ascii_percentage * seen))
         return NO_CAPPING;
 
-    return hlen;
+    return (MAX_HLEN > header->caplen) ? header->caplen : MAX_HLEN;
 }
-#endif
+// #endif
 
 void spc_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet)
 {
     struct arguments *_args = (struct arguments *)(args);
 #ifndef __OPTIMIZED
-    int slice = vanilla_capping(*_args, header, packet);
+    int slice = selective_capping(*_args, header, packet);
 #else
     int slice = optimized_capping(*_args, header, packet);
 #endif
@@ -139,21 +144,26 @@ void spc_handler(unsigned char *args, const struct pcap_pkthdr *header, const un
     if (slice == NO_CAPPING)
     {
         log_update((&(_args->log)), header->caplen, header->caplen, header->len);
-        pcap_dump((unsigned char *)_args->file, header, packet);
+        fwrite_unlocked(header, sizeof(struct pcap_pkthdr), 1, _args->file);
+        fwrite_unlocked(packet, header->caplen, 1, _args->file);
+        // pcap_dump((unsigned char *)_args->file, header, packet);
     }
-    else if (slice > NO_CAPPING)
+    else
     {
         log_update((&(_args->log)), slice, header->caplen, header->len);
         struct pcap_pkthdr *h = (struct pcap_pkthdr *)header;
         h->caplen = slice;
-        pcap_dump((unsigned char *)_args->file, h, packet);
+        fwrite_unlocked(header, sizeof(struct pcap_pkthdr), 1, _args->file);
+        fwrite_unlocked(packet, header->caplen, 1, _args->file);
+        // pcap_dump((unsigned char *)_args->file, h, packet);
     }
+
 #else
     if (slice == NO_CAPPING)
     {
         log_update((&(_args->log)), header->caplen, header->caplen, header->len);
     }
-    else if (slice > NO_CAPPING)
+    else
     {
         log_update((&(_args->log)), slice, header->caplen, header->len);
     }
@@ -180,7 +190,7 @@ void *spct_handler(void *args)
         psem_up(targs->read_mutex);
 
 #ifndef __OPTIMIZED
-        slice = vanilla_capping(_args, header, packet);
+        slice = selective_capping(_args, header, packet);
 #else
         slice = optimized_capping(_args, header, packet);
 #endif
@@ -193,7 +203,7 @@ void *spct_handler(void *args)
             pcap_dump((unsigned char *)_args.file, header, packet);
             psem_up(targs->write_mutex);
         }
-        else if (slice > NO_CAPPING)
+        else
         {
             log_update((&(targs->args.log)), slice, header->caplen, header->len);
             psem_down(targs->write_mutex);
@@ -206,11 +216,11 @@ void *spct_handler(void *args)
         {
             log_update((&(targs->args.log)), header->caplen, header->caplen, header->len);
         }
-        else if (slice > NO_CAPPING)
+        else
         {
             log_update((&(targs->args.log)), slice, header->caplen, header->len);
         }
 #endif
     }
-        return NULL;
+    return NULL;
 }

@@ -1,32 +1,76 @@
-#ifndef SPC_UTILS_H
-#define SPC_UTILS_H
+#ifndef SPC_CAPPING_H
+#define SPC_CAPPING_H
 
-/* =====================  Compatibility Definitions  ===================== */
+#include "headers.h"
 
-#define _XOPEN_SOURCE 700
-typedef unsigned char u_char;
-typedef unsigned int u_int;
-typedef unsigned short u_short;
+/* =====================     Struct  Definitions     ===================== */
+struct logging_info
+{
+    pthread_mutex_t log_mutex;
+    long unsigned int stored_bytes;
+    long unsigned int captured_bytes;
+    long unsigned int total_bytes;
+    long unsigned int packets;
+    unsigned int elapsed_time;
+};
 
-/* =====================     Capping Definitions     ===================== */
-#define MIN_ASCII 0x20
-#define MAX_ASCII 0x7E
-#define NO_CAPPING 0
-#define ERR_UNSUPPORTED -1
-#define ERR_ILLFORMED -2
+struct arguments
+{
+    struct logging_info log;
+    unsigned short ascii_percentage;
+    unsigned short ascii_runlen;
+    char *interface;
+    char *output;
+    char *input;
+    FILE *file;
+};
 
-#define TO_MS_VAL 10
-#define PCAP_BUFSIZE 8192
+struct thread_arguments
+{
+    struct arguments args;
+    pcap_t *handle;
+    pthread_mutex_t read_mutex;
+    pthread_mutex_t write_mutex;
+    short signaled;
+};
 
-/* =====================      Extra Definitions      ===================== */
-#define false 0
-#define true 1
 
-/* =====================       Function Macros       ===================== */
+#define log_update(log, stored, capped, total) \
+    pthread_mutex_lock(&(log->log_mutex));     \
+    log->packets++;                            \
+    log->stored_bytes += stored;               \
+    log->captured_bytes += capped;             \
+    log->total_bytes += total;                 \
+    pthread_mutex_unlock(&(log->log_mutex))
 
-#define psem_init(x) pthread_mutex_init(&(x), NULL)
-#define psem_destroy(x) pthread_mutex_destroy(&(x))
-#define psem_down(x) pthread_mutex_lock(&(x))
-#define psem_up(x) pthread_mutex_unlock(&(x))
+/* =====================    Function  Definitions    ===================== */
+
+/**
+ * Prints average capture statistics through standard output.
+ *
+ * @param log Logging information.
+ */
+void write_log(struct logging_info *log);
+
+/**
+ * Callback function for pcap_loop. Applies selective capping over the received
+ * packet.
+ *
+ * @details define __OPTIMIZED to use the optimized version of the algorithm.
+ * @details define __SIMSTORAGE to skip packet dumping process.
+ *
+ * @param args Additional arguments to be sent by the user.
+ * @param header Generic per-packet information, as supplied by libpcap.
+ * @param packet Packet to process.
+ */
+void spc_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet);
+
+/**
+ * Thread start routine for packet capture with libpcap. Applies selective
+ * capping over the received packet.
+ *
+ * @param args ThreadArguments*.
+ */
+void *spct_handler(void *args);
 
 #endif
