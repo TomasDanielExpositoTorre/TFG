@@ -1,5 +1,5 @@
-#ifndef SPC_HEADERS_H
-#define SPC_HEADERS_H
+#ifndef __HEADERS__H__
+#define __HEADERS__H__
 
 /* =====================  Standard Headers  ===================== */
 #include <pthread.h>
@@ -15,9 +15,7 @@
 #include <stdio.h>
 
 /* =====================    More Headers    ===================== */
-#include "macros.h"
-#include "network_headers.h"
-#include "sighandling.h"
+#include "types.h"
 #include "utils.h"
 
 #endif

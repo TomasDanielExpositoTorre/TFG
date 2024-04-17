@@ -70,6 +70,7 @@ int main(int argc, char **argv)
             .captured_bytes = 0,
         },
     };
+#ifndef __SIMSTORAGE
     struct pcap_file_header pcap_header = {
         .magic = PCAP_USEC,
         .version_major = 2,
@@ -79,6 +80,7 @@ int main(int argc, char **argv)
         .snaplen = SNAPLEN_SIZE,
         .linktype = DLT_EN10MB,
     };
+#endif
     pthread_attr_t attr;
     pthread_t logger;
     sigset_t thread_mask;
@@ -142,13 +144,19 @@ int main(int argc, char **argv)
     pcap_loop(handle, -1, spc_handler, (unsigned char *)&(args));
 
     /* Close data and exit */
-    fprintf(stdout, "[Results] (%dh,%dm,%ds)\t%ld packets\t%ld bits (s)\t%ld bits (c)\t%ld bits (t)\n",
-            args.log.elapsed_time / 3600, args.log.elapsed_time / 60, args.log.elapsed_time % 60,
-            args.log.packets,
-            args.log.stored_bytes * 8,
-            args.log.captured_bytes * 8,
-            args.log.total_bytes * 8);
-    
+    char su, cu, tu;
+    float ts, tc, tt;
+    ts = args.log.stored_bytes * 8;
+    tc = args.log.captured_bytes * 8;
+    tt = args.log.total_bytes * 8;
+
+    speed_format(ts, su);
+    speed_format(tc, cu);
+    speed_format(tt, tu);
+
+    fprintf(stdout, "[Results]    %ld packets\t%.2f %cb (stored)\t%.2f %cb (captured)\t%.2f %cb (total)\n",
+            args.log.packets, ts, su, tc, cu, tt, tu);
+
     pcap_close(handle);
     pthread_attr_destroy(&attr);
 
