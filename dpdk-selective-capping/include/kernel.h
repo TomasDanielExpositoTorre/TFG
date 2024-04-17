@@ -1,5 +1,5 @@
-#ifndef SPC_CUDA_H
-#define SPC_CUDA_H
+#ifndef __KERNEL__H__
+#define __KERNEL__H__
 
 #include "headers.h"
 
@@ -8,11 +8,8 @@
  */
 enum kernel_type
 {
-    VANILLA_CAPPING_THREAD = 0,   /* Vanilla algorithm */
-    OPTIMIZED_CAPPING_THREAD = 1, /* Optimized algorithm */
-    NAIVE_CAPPING_WARP = 2,       /* Divides packet payload equally */
-    INVASIVE_CAPPING_WARP = 3,    /* Extra runlen-1 bytes per naive thread */
-    COERCIVE_CAPPING_WARP = 4     /* Simulates invasive threads with shmem */
+    SELECTIVE_CAPPING = 0,  
+    OPTIMIZED_CAPPING = 1,
 };
 
 /**

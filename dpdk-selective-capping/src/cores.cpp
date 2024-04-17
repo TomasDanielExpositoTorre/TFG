@@ -16,20 +16,14 @@ error_t parse_opt(int key, char *arg, struct argp_state *state)
         break;
     case 'r':
         args->ascii_runlen = atoi(arg);
-        if (args->ascii_runlen <= 0 || args->ascii_runlen > RTE_ETHER_MAX_LEN)
+        if (args->ascii_runlen <= 0 || args->ascii_runlen > (RTE_ETHER_MAX_LEN - MIN_HLEN))
         {
-            fprintf(stderr, "[Error] Incorrect ASCII runlen. Value must be a postive number.\n");
+            fprintf(stderr, "[Error] Incorrect ASCII runlen. Value must be a valid number for ethernet packets.\n");
             exit(EXIT_FAILURE);
         }
         break;
     case 'k':
-        args->kernel = atoi(arg);
-        if (args->kernel < VANILLA_CAPPING_THREAD || args->kernel > COERCIVE_CAPPING_WARP)
-        {
-            fprintf(stderr, "[Error] Incorrect kernel type. Value must be from %d to %d.\n",
-                    VANILLA_CAPPING_THREAD, COERCIVE_CAPPING_WARP);
-            exit(EXIT_FAILURE);
-        }
+        args->kernel = atoi(arg) % 2;
         break;
     case 'o':
         if ((args->output = fopen(arg, "wb")) == NULL)
@@ -70,7 +64,7 @@ error_t parse_opt(int key, char *arg, struct argp_state *state)
     return 0;
 }
 
-void mastercore_workload(std::vector<CommunicationRing *> &shmem, struct arguments args)
+void mastercore(std::vector<CommunicationRing *> &shmem, struct arguments args)
 {
     struct rte_eth_stats stats;
     int id, ret, time_elapsed = 0;
@@ -134,11 +128,15 @@ void mastercore_workload(std::vector<CommunicationRing *> &shmem, struct argumen
                stats.q_errors[id]);
     puts("\nProcessing ring information");
     for (auto &it : shmem)
-        printf("Queue %d: %lu packets, %lu bytes (total), %lu bytes (stored)\n",
-               it->id,
-               it->stats.packets,
-               it->stats.total_bytes,
-               it->stats.stored_bytes);
+    {
+        tbps = it->stats.total_bytes * 8;
+        sbps = it->stats.stored_bytes * 8;
+        speed_format(tbps, tu);
+        speed_format(sbps, su);
+
+        printf("Queue %d: %lu packets, %.2f %cb (total), %.2f %cb (stored)\n",
+               it->id, it->stats.packets, tbps, tu, sbps, su);
+    }
 }
 
 /* ========================================================================= */
@@ -233,8 +231,11 @@ int pxcore(void *args)
         {
             packet = (char *)(packets[i]->buf_addr);
             psize = packets[i]->data_len;
-            headers[i] = headers[0];
+
+            headers[i].ts_sec = headers[0].ts_sec;
+            headers[i].ts_nsec = headers[0].ts_nsec;
             headers[i].len = psize;
+
             total = 0;
             runlen = 0;
 
@@ -252,13 +253,70 @@ int pxcore(void *args)
             }
 
             if (MAX_HLEN > psize || runlen == shm->args.ascii_runlen || total >= (shm->args.ascii_percentage * (psize - MIN_HLEN)))
-                    headers[i].caplen = psize;
+                headers[i].caplen = psize;
             else
                 headers[i].caplen = MAX_HLEN;
         }
-        
+
         shm->pxlist_done();
     }
     return EXIT_SUCCESS;
 }
+int pxcore_optimized(void *args)
+{
+    CpuCommunicationRing *shm = (CpuCommunicationRing *)args;
+    struct rte_mbuf **packets;
+    struct pcap_packet_header *headers;
+    char *packet;
+    int num_pkts, psize, runlen, total, seen;
 
+    printf("[CPU-PX %d] Starting...\n", shm->id);
+
+    while (shm->self_quit == false || shm->pxlist_isempty() == false)
+    {
+        while (shm->pxlist_isready() == false && !(shm->self_quit == true && shm->pxlist_isempty()))
+            ;
+
+        if (shm->self_quit == true && shm->pxlist_isempty())
+            break;
+
+        packets = shm->pxlist_read(&num_pkts, &headers);
+
+        for (int i = 0; i < num_pkts; i++)
+        {
+            packet = (char *)(packets[i]->buf_addr);
+            psize = packets[i]->data_len;
+            
+            headers[i].ts_sec = headers[0].ts_sec;
+            headers[i].ts_nsec = headers[0].ts_nsec;
+            headers[i].len = psize;
+
+            total = 0;
+            runlen = 0;
+            seen = 0;
+            for (int j = MIN_HLEN + shm->args.ascii_runlen - 1; j >= MIN_HLEN && j < psize; j--, seen++)
+            {
+                if (packet[j] >= MIN_ASCII && packet[j] <= MAX_ASCII)
+                {
+                    runlen++;
+                    total += 100;
+                    if (runlen == shm->args.ascii_runlen)
+                        j = psize;
+                }
+                else
+                {
+                    runlen = 0;
+                    j += shm->args.ascii_runlen + 1;
+                }
+            }
+
+            if (MAX_HLEN > psize || runlen == shm->args.ascii_runlen || total >= (shm->args.ascii_percentage * seen))
+                headers[i].caplen = psize;
+            else
+                headers[i].caplen = MAX_HLEN;
+        }
+
+        shm->pxlist_done();
+    }
+    return EXIT_SUCCESS;
+}

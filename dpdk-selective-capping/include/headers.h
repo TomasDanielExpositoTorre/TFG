@@ -1,5 +1,5 @@
-#ifndef SPC_HEADERS_H
-#define SPC_HEADERS_H
+#ifndef __HEADERS__H__
+#define __HEADERS__H__
 
 /* =====================  Standard Headers  ===================== */
 #include <stdlib.h>
@@ -45,6 +45,6 @@
 #include "types.h"
 #include "kernel.h"
 #include "commring.h"
-#include "utils.h"
+#include "cores.h"
 
 #endif

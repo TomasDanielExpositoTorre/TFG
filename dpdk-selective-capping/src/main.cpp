@@ -63,7 +63,7 @@ int main(int argc, char **argv)
     struct arguments args = {
         .ascii_percentage = 45,
         .ascii_runlen = 15,
-        .kernel = VANILLA_CAPPING_THREAD,
+        .kernel = SELECTIVE_CAPPING,
         .queues = 1,
         .burst_size = 1024,
         .ring_size = 1024,
@@ -132,7 +132,6 @@ int main(int argc, char **argv)
     for (id = 0; id < args.queues; id++)
     {
         socket_id = (uint8_t)rte_lcore_to_socket_id(id);
-
         try(rte_eth_rx_queue_setup(NIC_PORT, id, nb_rxd, socket_id, NULL, mpool_payload))
             fail("rte_eth_rx_queue_setup: %s\n", rte_strerror(ret));
     }
@@ -172,11 +171,15 @@ int main(int argc, char **argv)
             rte_eal_remote_launch(rxcore, (void *)(shmem[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(pxcore, (void *)(shmem[id]), tmp);
+
+            if (args.kernel == OPTIMIZED_CAPPING)
+                rte_eal_remote_launch(pxcore_optimized, (void *)(shmem[id]), tmp);
+            else
+                rte_eal_remote_launch(pxcore, (void *)(shmem[id]), tmp);
         }
     }
 
-    mastercore_workload(shmem, args);
+    mastercore(shmem, args);
 
     /* =======================       Cleaning       ======================= */
 

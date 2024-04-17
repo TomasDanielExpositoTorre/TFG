@@ -1,10 +1,7 @@
-#ifndef SPC_GCPUNIC_H
-#define SPC_GCPUNIC_H
+#ifndef __COMRING__H__
+#define __COMRING__H__
+
 #include "headers.h"
-
-#define killed(shm) (shm->force_quit)
-
-#define keep_alive(shm) (!shm->force_quit)
 
 class CommunicationRing
 {
@@ -99,7 +96,7 @@ public:
     /**
      * Reads the processed packet list, setting the headers and list length
      * values accordingly.
-     * 
+     *
      * @param[out] pkt_headers: pcap-like struct with packet list metadata.
      * @param[out] num_pkts: Number of packets in rte_mbuf packet list.
      *
@@ -120,7 +117,7 @@ public:
  * Communication between the CPU and GPU is done through a packet burst
  * ring, where:
  * - A CPU reception core populates packet bursts.
- * - A GPU kernel processes the populated packets.
+ * - A GPU kernel applies selective capping over the populated packets.
  * - A CPU dumping core writes processed packets from this list in pcap format.
  */
 class GpuCommunicationRing : public CommunicationRing
@@ -145,6 +142,15 @@ public:
     void dxlist_clean();
 };
 
+/**
+ * @brief Implementation of a communication ring between CPU cores and NIC.
+ *
+ * Communication between the CPU and GPU is done through a packet burst
+ * ring, where:
+ * - A CPU reception core populates packet bursts.
+ * - A CPU processing core applies selective capping over the populated packets.
+ * - A CPU dumping core writes processed packets from this list in pcap format.
+ */
 class CpuCommunicationRing : public CommunicationRing
 {
 private:
@@ -154,7 +160,6 @@ private:
     int pxi;
 
 public:
-
     CpuCommunicationRing(struct arguments args, int i);
     ~CpuCommunicationRing();
 

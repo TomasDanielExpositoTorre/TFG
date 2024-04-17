@@ -1,5 +1,5 @@
-#ifndef SPC_MACROS_H
-#define SPC_MACROS_H
+#ifndef __TYPES__H__
+#define __TYPES__H__
 
 #include "headers.h"
 

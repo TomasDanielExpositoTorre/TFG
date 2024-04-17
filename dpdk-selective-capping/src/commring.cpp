@@ -103,7 +103,7 @@ bool GpuCommunicationRing::rxlist_iswritable()
 int GpuCommunicationRing::rxlist_write()
 {
     int i = 0;
-    while (keep_alive(this) && i < (burst_size - RTE_RXBURST_ALIGNSIZE))
+    while (CommunicationRing::force_quit == false && i < (burst_size - RTE_RXBURST_ALIGNSIZE))
         i += rte_eth_rx_burst(NIC_PORT, id, &(burst[i]), (burst_size - i));
 
 #ifdef PCAP_NANOSECONDS
@@ -231,7 +231,7 @@ int CpuCommunicationRing::rxlist_write()
 {
     int i = 0;
 
-    while (keep_alive(this) && i < (burst_size - RTE_RXBURST_ALIGNSIZE))
+    while (CommunicationRing::force_quit == false && i < (burst_size - RTE_RXBURST_ALIGNSIZE))
         i += rte_eth_rx_burst(NIC_PORT, id, &(packet_ring[rxi][i]), (burst_size - i));
 
 #ifdef PCAP_NANOSECONDS

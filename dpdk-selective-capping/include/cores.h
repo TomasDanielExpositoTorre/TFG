@@ -1,8 +1,7 @@
-#ifndef SPC_PARSER_H
-#define SPC_PARSER_H
+#ifndef __UTILS__H__
+#define __UTILS__H__
 
 #include "headers.h"
-
 
 /* =====================    RX/TX  Cores    ===================== */
 
@@ -29,14 +28,15 @@ int dxcore(void *args);
 
 int pxcore(void *args);
 
-/* =====================  Other  Functions  ===================== */
+int pxcore_optimized(void *args);
 
+void mastercore(std::vector<CommunicationRing *> &shmem, struct arguments args);
+
+/* =====================  Other  Functions  ===================== */
 
 /**
  * Parsing function for received user arguments.
  */
 error_t parse_opt(int key, char *arg, struct argp_state *state);
-
-void mastercore_workload(std::vector<CommunicationRing*>& shmem, struct arguments args);
 
 #endif
