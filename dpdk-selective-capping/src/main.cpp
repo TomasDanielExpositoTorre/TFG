@@ -72,10 +72,10 @@ int main(int argc, char **argv)
         .gpu_workload = false,
         .output = NULL,
     };
-    std::vector<CommunicationRing *> shmem;
+    std::vector<CommunicationRing *> ring;
     uint16_t nb_rxd = 1024U, nb_txd = 1024U;
     uint8_t socket_id;
-    int ret, id, tmp, min_cores;
+    int ret, id, tmp;
 
     cudaProfilerStop();
     signal(SIGINT, sighandler);
@@ -88,10 +88,7 @@ int main(int argc, char **argv)
     argv += ret;
 
     argp_parse(&argp, argc, argv, 0, 0, &args);
-
-    min_cores = args.gpu_workload ? 2 * args.queues + 1 : 3 * args.queues + 1;
-    if (min_cores > (int)rte_lcore_count())
-        fail("Number of cores should be at least %d to suppport %d queues for this workload.\n", min_cores, args.queues);
+    check_args(args);
 
     fwrite_unlocked(&file_header, sizeof(pcap_file_header), 1, args.output);
 
@@ -145,67 +142,67 @@ int main(int argc, char **argv)
 
     /* =======================         Main         ======================= */
 
-    shmem.reserve(args.queues);
+    ring.reserve(args.queues);
 
     if (args.gpu_workload)
         for (id = 0, tmp = 0; id < args.queues; id++)
         {
-            shmem.push_back(new GpuCommunicationRing(args, id));
+            ring.push_back(new GpuCommunicationRing(args, id));
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(dxcore, (void *)(shmem[id]), tmp);
+            rte_eal_remote_launch(dxcore, (void *)(ring[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(rxcore, (void *)(shmem[id]), tmp);
+            rte_eal_remote_launch(rxcore, (void *)(ring[id]), tmp);
         }
     else if (args.threads == 1)
         for (id = 0, tmp = 0; id < args.queues; id++)
         {
-            shmem.push_back(new CpuCommunicationRing(args, id));
+            ring.push_back(new CpuCommunicationRing(args, id));
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(dxcore, (void *)(shmem[id]), tmp);
+            rte_eal_remote_launch(dxcore, (void *)(ring[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
             if (args.kernel == OPTIMIZED_CAPPING)
-                rte_eal_remote_launch(pxcore, (void *)(shmem[id]), tmp);
+                rte_eal_remote_launch(pxcore, (void *)(ring[id]), tmp);
             else
-                rte_eal_remote_launch(opxcore, (void *)(shmem[id]), tmp);
+                rte_eal_remote_launch(opxcore, (void *)(ring[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(rxcore, (void *)(shmem[id]), tmp);
+            rte_eal_remote_launch(rxcore, (void *)(ring[id]), tmp);
         }
     else
         for (id = 0, tmp = 0; id < args.queues; id++)
         {
-            shmem.push_back(new SpuCommunicationRing(args, id, args.threads));
+            ring.push_back(new SpuCommunicationRing(args, id, args.threads));
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(sdxcore, (void *)(shmem[id]), tmp);
+            rte_eal_remote_launch(sdxcore, (void *)(ring[id]), tmp);
 
             if (args.kernel == OPTIMIZED_CAPPING)
                 for (int j = 0; j < args.threads; j++)
                 {
                     tmp = rte_get_next_lcore(tmp, 1, 0);
-                    rte_eal_remote_launch(sopxcore, (void *)(shmem[id]), tmp);
+                    rte_eal_remote_launch(sopxcore, (void *)(ring[id]), tmp);
                 }
             else
                 for (int j = 0; j < args.threads; j++)
                 {
                     tmp = rte_get_next_lcore(tmp, 1, 0);
-                    rte_eal_remote_launch(spxcore, (void *)(shmem[id]), tmp);
+                    rte_eal_remote_launch(spxcore, (void *)(ring[id]), tmp);
                 }
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(srxcore, (void *)(shmem[id]), tmp);
+            rte_eal_remote_launch(srxcore, (void *)(ring[id]), tmp);
         }
 
-    mastercore(shmem, args);
+    mastercore(ring, args);
 
     /* =======================       Cleaning       ======================= */
 
     CommunicationRing::shmem_unregister(&(ext_mem), &(dev_info), NIC_PORT, args.gpu_workload);
-    shmem.clear();
+    ring.clear();
 
     return EXIT_SUCCESS;
 }

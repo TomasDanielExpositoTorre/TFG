@@ -45,6 +45,7 @@
 #include "types.h"
 #include "kernel.h"
 #include "commring.h"
+#include "utils.h"
 #include "cores.h"
 
 #endif

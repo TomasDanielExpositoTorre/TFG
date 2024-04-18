@@ -8,22 +8,14 @@ error_t parse_opt(int key, char *arg, struct argp_state *state)
     case 'p':
         args->ascii_percentage = atoi(arg);
         if (args->ascii_percentage <= 0 || args->ascii_percentage > 100)
-        {
-            fprintf(stderr, "[Error] Incorrect ASCII percentage. Value must be from 1 to 100.\n");
-            exit(EXIT_FAILURE);
-        }
+            fail("Incorrect ASCII percentage. Value must be from 1 to 100.\n");
         break;
     case 'r':
         args->ascii_runlen = atoi(arg);
         if (args->ascii_runlen <= 0 || args->ascii_runlen > (RTE_ETHER_MAX_LEN - MIN_HLEN))
-        {
-            fprintf(stderr, "[Error] Incorrect ASCII runlen. Value must be a valid number for ethernet packets.\n");
-            exit(EXIT_FAILURE);
-        }
+            fail("Incorrect ASCII runlen. Value must be a valid number for ethernet packets.\n");
         break;
-    case 'k':
-        args->kernel = atoi(arg) % 2;
-        break;
+
     case 'o':
         if ((args->output = fopen(arg, "wb")) == NULL)
         {
@@ -34,18 +26,13 @@ error_t parse_opt(int key, char *arg, struct argp_state *state)
     case 'q':
         args->queues = atoi(arg);
         if (args->queues <= 0)
-        {
-            fprintf(stderr, "[Error] Number of queues cannot be 0.\n");
-            exit(EXIT_FAILURE);
-        }
+            fail("Number of queues cannot be 0.\n");
         break;
     case 'c':
         args->ring_size = atoi(arg);
         if (args->ring_size <= 0)
-        {
-            fprintf(stderr, "[Error] Number of bursts for communication list must be greater than 0.\n");
-            exit(EXIT_FAILURE);
-        }
+            fail("Number of bursts for communication list must be greater than 0.\n");
+        break;
     case 'b':
         args->burst_size = atoi(arg);
         if (args->burst_size <= 0)
@@ -59,13 +46,32 @@ error_t parse_opt(int key, char *arg, struct argp_state *state)
     case 'w':
         args->gpu_workload = atoi(arg) % 2;
         break;
+    case 'k':
+        args->kernel = atoi(arg) % 2;
+        break;
     default:
         return ARGP_ERR_UNKNOWN;
     }
     return 0;
 }
 
-void mastercore(std::vector<CommunicationRing *> &shmem, struct arguments args)
+void check_args(struct arguments args)
+{
+    int min_cores = args.gpu_workload     ? args.queues * 2 + 1
+                    : (args.threads == 1) ? args.queues * 3 + 1
+                                          : args.queues * (args.threads + 2) + 1;
+
+    if (args.gpu_workload && args.burst_size > 1024)
+        fail("Invalid burst size for GPU workload: %d\n", args.burst_size);
+
+    if (min_cores > (int)rte_lcore_count())
+        fail("Number of cores should be at least %d to support %d queues for this workload.\n", min_cores, args.queues);
+
+    if (args.queues > 8)
+        fail("Up to 8 queues are supported for this implementation\n");
+}
+
+void mastercore(std::vector<CommunicationRing *> &ring, struct arguments args)
 {
     struct rte_eth_stats stats;
     int id, ret, time_elapsed = 0;
@@ -92,7 +98,7 @@ void mastercore(std::vector<CommunicationRing *> &shmem, struct arguments args)
                    stats.q_errors[id]);
 
         puts("\nProcessing ring information");
-        for (auto &it : shmem)
+        for (auto &it : ring)
         {
             it->rxlog.lock();
             it->dxlog.lock();
@@ -128,7 +134,7 @@ void mastercore(std::vector<CommunicationRing *> &shmem, struct arguments args)
                stats.q_ipackets[id],
                stats.q_errors[id]);
     puts("\nProcessing ring information");
-    for (auto &it : shmem)
+    for (auto &it : ring)
     {
         tbps = it->stats.total_bytes * 8;
         sbps = it->stats.stored_bytes * 8;

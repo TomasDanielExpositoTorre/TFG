@@ -5,12 +5,9 @@
 
 /* =========================== Macro Definitions =========================== */
 
-/** Minimum printable ascii character */
 #define MIN_ASCII 0x20
-/** Maximum printable ascii character */
 #define MAX_ASCII 0x7E
 
-/* Lnkytype Ethernet */
 #define DLT_EN10MB 1
 
 #define UDP_HLEN 8

@@ -1,9 +1,7 @@
-#ifndef __UTILS__H__
-#define __UTILS__H__
+#ifndef __CORES__H__
+#define __CORES__H__
 
 #include "headers.h"
-
-/* =====================    RPDX  Cores    ===================== */
 
 /**
  * Handler function for a reception thread. This function receives
@@ -27,7 +25,7 @@ int rxcore(void *args);
 int dxcore(void *args);
 
 /**
- * Handler function for a reception thread. This function receives
+ * Handler function for a processing thread. This function receives
  * packets in bursts from a defined reception queue, and populates
  * a communication list for GPU processing.
  *
@@ -38,29 +36,29 @@ int dxcore(void *args);
  */
 int pxcore(void *args);
 
+/**
+ * TODO COMPLETE
+ */
 int opxcore(void *args);
 
 /**
- * Handler function for a dumping thread. This function retrieves
- * packets from a processed burst list, and writes relevant data
- * to disk.
- *
- * @param args: Arguments required to manipulate a communication ring.
+ * TODO COMPLETE
  */
 int srxcore(void *args);
 
+/**
+ * TODO COMPLETE
+ */
 int spxcore(void *args);
-int sopxcore(void *args);
-
-int sdxcore(void *args);
-
-void mastercore(std::vector<CommunicationRing *> &shmem, struct arguments args);
-
-/* =====================  Other  Functions  ===================== */
 
 /**
- * Parsing function for received user arguments.
+ * TODO COMPLETE
  */
-error_t parse_opt(int key, char *arg, struct argp_state *state);
+int sopxcore(void *args);
+
+/**
+ * TODO COMPLETE
+ */
+int sdxcore(void *args);
 
 #endif
