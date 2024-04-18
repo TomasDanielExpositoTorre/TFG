@@ -3,15 +3,24 @@
 
 #include "headers.h"
 
-void mastercore(std::vector<CommunicationRing *> &ring, struct arguments args);
-
 /**
  * Parsing function for received user arguments.
  */
 error_t parse_opt(int key, char *arg, struct argp_state *state);
 
 /**
- * Parsing function for received user arguments.
+ * Validator function for received user arguments.
+ * 
+ * @param[in] args: user arguments. 
  */
 void check_args(struct arguments args);
+
+/**
+ * Prints statistics every five seconds while the program is running,
+ * then prints final statistics after SIGINT is received.
+ * 
+ * @param[in] ring: Communication rings for all declared rx queues.
+ * @param[in] args: user arguments. 
+*/
+void mastercore(std::vector<CommunicationRing *> &ring, struct arguments args);
 #endif

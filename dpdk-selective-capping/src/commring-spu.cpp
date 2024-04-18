@@ -42,8 +42,8 @@ SpuCommunicationRing::SpuCommunicationRing(struct arguments args, int i, int thr
             exit(EXIT_FAILURE);
         }
     }
-
 }
+
 SpuCommunicationRing::~SpuCommunicationRing()
 {
     for (int i = 0; i < ring_size; i++)
@@ -65,7 +65,6 @@ int SpuCommunicationRing::gettid()
     tlock.unlock();
     return i;
 }
-
 
 int SpuCommunicationRing::rxlist_choosethread(int previous)
 {
@@ -126,7 +125,7 @@ bool SpuCommunicationRing::pxlist_isready(int thread)
     return burstate[pxi[thread]] == BURST_PROCESSING;
 }
 
-struct rte_mbuf **SpuCommunicationRing::pxlist_read(int thread, int *num_pkts, struct pcap_packet_header **pkt_headers)
+struct rte_mbuf **SpuCommunicationRing::pxlist_read(int thread, struct pcap_packet_header **pkt_headers, int *num_pkts)
 {
     *num_pkts = nbpackets[pxi[thread]];
     *(pkt_headers) = headers + pxi[thread] * burst_size;

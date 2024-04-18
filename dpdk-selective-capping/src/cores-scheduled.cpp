@@ -39,7 +39,7 @@ int spxcore(void *args)
         if (shm->self_quit == true && shm->pxlist_isempty(id))
             return EXIT_SUCCESS;
 
-        packets = shm->pxlist_read(id, &num_pkts, &headers);
+        packets = shm->pxlist_read(id, &headers, &num_pkts);
 
         for (int i = 0; i < num_pkts; i++)
         {
@@ -96,7 +96,7 @@ int sopxcore(void *args)
         if (shm->self_quit == true && shm->pxlist_isempty(id))
             return EXIT_SUCCESS;
 
-        packets = shm->pxlist_read(id, &num_pkts, &headers);
+        packets = shm->pxlist_read(id, &headers, &num_pkts);
 
         for (int i = 0; i < num_pkts; i++)
         {

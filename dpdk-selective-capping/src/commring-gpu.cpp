@@ -6,7 +6,7 @@ GpuCommunicationRing::GpuCommunicationRing(struct arguments args, int i) : Linea
 
     rxi = dxi = pxi = 0;
     qbursts = 0;
-    mbursts = 16;
+    mbursts = args.threads;
 
     if ((comm_list = rte_gpu_comm_create_list(GPU_ID, ring_size)) == NULL)
         rte_panic("rte_gpu_comm_create_list");

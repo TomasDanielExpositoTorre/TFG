@@ -40,8 +40,6 @@ CpuCommunicationRing::~CpuCommunicationRing()
     free(headers);
 }
 
-/* ==========================  RXLIST  FUNCTIONS  ========================== */
-
 bool CpuCommunicationRing::rxlist_iswritable()
 {
     return burstate[rxi] == BURST_FREE;
@@ -83,8 +81,6 @@ void CpuCommunicationRing::rxlist_process(int npackets)
     rxi = (rxi + 1) % ring_size;
 }
 
-/* ==========================  PXLIST  FUNCTIONS  ========================== */
-
 bool CpuCommunicationRing::pxlist_isempty()
 {
     return burstate[pxi] == BURST_FREE;
@@ -95,7 +91,7 @@ bool CpuCommunicationRing::pxlist_isready()
     return burstate[pxi] == BURST_PROCESSING;
 }
 
-struct rte_mbuf **CpuCommunicationRing::pxlist_read(int *num_pkts, struct pcap_packet_header **pkt_headers)
+struct rte_mbuf **CpuCommunicationRing::pxlist_read(struct pcap_packet_header **pkt_headers, int *num_pkts)
 {
     *num_pkts = nbpackets[pxi];
     *(pkt_headers) = headers + pxi * burst_size;
@@ -107,8 +103,6 @@ void CpuCommunicationRing::pxlist_done()
     burstate[pxi] = BURST_DONE;
     pxi = (pxi + 1) % ring_size;
 }
-
-/* ==========================  DXLIST  FUNCTIONS  ========================== */
 
 bool CpuCommunicationRing::dxlist_isempty()
 {

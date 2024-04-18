@@ -18,7 +18,7 @@ static struct argp_option options[] = {
     {"burst", 'b', "size", 0, "Number of packets per burst."},
     {"comm", 'c', "size", 0, "Number of bursts per communication ring."},
     {"workload", 'w', "type", 0, "0 for CPU, 1 for GPU"},
-    {"threads", 't', "N", 0, "Threads for subring processing on CPU"},
+    {"threads", 't', "N", 0, "Threads for subring processing on CPU, bursts to process simultaneously on GPU"},
     {0}};
 
 static struct argp argp = {options, parse_opt, 0, NULL};

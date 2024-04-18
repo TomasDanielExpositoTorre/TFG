@@ -41,7 +41,7 @@ int pxcore(void *args)
         if (shm->self_quit == true && shm->pxlist_isempty())
             return EXIT_SUCCESS;
 
-        packets = shm->pxlist_read(&num_pkts, &headers);
+        packets = shm->pxlist_read(&headers, &num_pkts);
 
         for (int i = 0; i < num_pkts; i++)
         {
@@ -97,7 +97,7 @@ int opxcore(void *args)
         if (shm->self_quit == true && shm->pxlist_isempty())
             return EXIT_SUCCESS;
 
-        packets = shm->pxlist_read(&num_pkts, &headers);
+        packets = shm->pxlist_read(&headers, &num_pkts);
 
         for (int i = 0; i < num_pkts; i++)
         {
