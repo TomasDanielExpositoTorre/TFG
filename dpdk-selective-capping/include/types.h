@@ -118,6 +118,7 @@ struct arguments
     unsigned short ascii_runlen;
     unsigned short kernel;
     unsigned short queues;
+    unsigned short threads;
     unsigned int burst_size;
     unsigned int ring_size;
     bool gpu_workload;

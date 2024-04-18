@@ -7,7 +7,6 @@ class CommunicationRing
 {
 protected:
     struct pcap_packet_header *headers;
-    int rxi, dxi;
     int ring_size;
     int burst_size;
 
@@ -59,6 +58,23 @@ public:
     static void shmem_unregister(struct rte_pktmbuf_extmem *ext_mem,
                                  struct rte_eth_dev_info *dev_info,
                                  int port_id, bool using_gpu);
+};
+
+class LinearCommunicationRing : public CommunicationRing
+{
+protected:
+    int rxi, dxi, pxi;
+
+public:
+        /**
+     * Constructor method for this object. Creates the necessary elements
+     * communication and attaches to a file for packet dumping.
+     *
+     * @param args: arguments received from user.
+     * @param i: Identifier for this object.
+     */
+    LinearCommunicationRing(struct arguments args, int i) : CommunicationRing(args, i) {};
+    virtual ~LinearCommunicationRing() = default;
 
     /**
      * @returns True if the packet list is free, False otherwise.
@@ -110,7 +126,6 @@ public:
      */
     virtual void dxlist_clean() = 0;
 };
-
 /**
  * @brief Implementation of a communication ring between CPU, GPU and NIC.
  *
@@ -120,11 +135,12 @@ public:
  * - A GPU kernel applies selective capping over the populated packets.
  * - A CPU dumping core writes processed packets from this list in pcap format.
  */
-class GpuCommunicationRing : public CommunicationRing
+class GpuCommunicationRing : public LinearCommunicationRing
 {
 private:
     struct rte_gpu_comm_list *comm_list;
     struct rte_mbuf *burst[MAX_BURSTSIZE];
+    int qbursts, mbursts;
 
 public:
     cudaStream_t stream;
@@ -151,13 +167,12 @@ public:
  * - A CPU processing core applies selective capping over the populated packets.
  * - A CPU dumping core writes processed packets from this list in pcap format.
  */
-class CpuCommunicationRing : public CommunicationRing
+class CpuCommunicationRing : public LinearCommunicationRing
 {
 private:
     struct rte_mbuf ***packet_ring;
     int *nbpackets;
     int *burstate;
-    int pxi;
 
 public:
     CpuCommunicationRing(struct arguments args, int i);
@@ -176,5 +191,47 @@ public:
     bool dxlist_isreadable();
     struct rte_mbuf **dxlist_read(struct pcap_packet_header **pkt_headers, int *num_pkts);
     void dxlist_clean();
+};
+
+/**
+ * @brief Implementation of a communication ring between CPU cores and NIC.
+ *
+ * Communication between the CPU and GPU is done through a packet burst
+ * ring, where:
+ * - A CPU reception core populates packet bursts.
+ * - A CPU processing core applies selective capping over the populated packets.
+ * - A CPU dumping core writes processed packets from this list in pcap format.
+ */
+class SpuCommunicationRing : public CommunicationRing
+{
+private:
+    struct rte_mbuf ***packet_ring;
+    int *nbpackets;
+    int *burstate;
+
+    std::mutex tlock;
+    int nthreads, tids;
+    int subring_size;
+    int *rxi, *dxi, *pxi;
+
+public:
+    SpuCommunicationRing(struct arguments args, int i, int threads);
+    ~SpuCommunicationRing();
+
+    int gettid();
+
+    int rxlist_choosethread(int previous);
+    int rxlist_write(int thread);
+    void rxlist_process(int thread, int npackets);
+
+    bool pxlist_isempty(int thread);
+    bool pxlist_isready(int thread);
+    struct rte_mbuf **pxlist_read(int thread, int *num_pkts, struct pcap_packet_header **pkt_headers);
+    void pxlist_done(int thread);
+
+    bool dxlist_isempty();
+    int dxlist_choosethread(int previous);
+    struct rte_mbuf **dxlist_read(int thread, struct pcap_packet_header **pkt_headers, int *num_pkts);
+    void dxlist_clean(int thread);
 };
 #endif

@@ -18,6 +18,7 @@ static struct argp_option options[] = {
     {"burst", 'b', "size", 0, "Number of packets per burst."},
     {"comm", 'c', "size", 0, "Number of bursts per communication ring."},
     {"workload", 'w', "type", 0, "0 for CPU, 1 for GPU"},
+    {"threads", 't', "N", 0, "Threads for subring processing on CPU"},
     {0}};
 
 static struct argp argp = {options, parse_opt, 0, NULL};
@@ -65,6 +66,7 @@ int main(int argc, char **argv)
         .ascii_runlen = 15,
         .kernel = SELECTIVE_CAPPING,
         .queues = 1,
+        .threads = 1,
         .burst_size = 1024,
         .ring_size = 1024,
         .gpu_workload = false,
@@ -146,7 +148,6 @@ int main(int argc, char **argv)
     shmem.reserve(args.queues);
 
     if (args.gpu_workload)
-    {
         for (id = 0, tmp = 0; id < args.queues; id++)
         {
             shmem.push_back(new GpuCommunicationRing(args, id));
@@ -157,9 +158,7 @@ int main(int argc, char **argv)
             tmp = rte_get_next_lcore(tmp, 1, 0);
             rte_eal_remote_launch(rxcore, (void *)(shmem[id]), tmp);
         }
-    }
-    else
-    {
+    else if (args.threads == 1)
         for (id = 0, tmp = 0; id < args.queues; id++)
         {
             shmem.push_back(new CpuCommunicationRing(args, id));
@@ -168,16 +167,38 @@ int main(int argc, char **argv)
             rte_eal_remote_launch(dxcore, (void *)(shmem[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(rxcore, (void *)(shmem[id]), tmp);
+            if (args.kernel == OPTIMIZED_CAPPING)
+                rte_eal_remote_launch(pxcore, (void *)(shmem[id]), tmp);
+            else
+                rte_eal_remote_launch(opxcore, (void *)(shmem[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
+            rte_eal_remote_launch(rxcore, (void *)(shmem[id]), tmp);
+        }
+    else
+        for (id = 0, tmp = 0; id < args.queues; id++)
+        {
+            shmem.push_back(new SpuCommunicationRing(args, id, args.threads));
+
+            tmp = rte_get_next_lcore(tmp, 1, 0);
+            rte_eal_remote_launch(sdxcore, (void *)(shmem[id]), tmp);
 
             if (args.kernel == OPTIMIZED_CAPPING)
-                rte_eal_remote_launch(pxcore_optimized, (void *)(shmem[id]), tmp);
+                for (int j = 0; j < args.threads; j++)
+                {
+                    tmp = rte_get_next_lcore(tmp, 1, 0);
+                    rte_eal_remote_launch(sopxcore, (void *)(shmem[id]), tmp);
+                }
             else
-                rte_eal_remote_launch(pxcore, (void *)(shmem[id]), tmp);
+                for (int j = 0; j < args.threads; j++)
+                {
+                    tmp = rte_get_next_lcore(tmp, 1, 0);
+                    rte_eal_remote_launch(spxcore, (void *)(shmem[id]), tmp);
+                }
+
+            tmp = rte_get_next_lcore(tmp, 1, 0);
+            rte_eal_remote_launch(srxcore, (void *)(shmem[id]), tmp);
         }
-    }
 
     mastercore(shmem, args);
 
