@@ -29,7 +29,7 @@ int spxcore(void *args)
     int num_pkts, psize, runlen, total;
     int id = shm->gettid();
 
-    printf("[SPU-PX %d] Starting...\n", shm->id);
+    printf("[SPU-PX %d] Starting normal...\n", shm->id);
 
     while (shm->self_quit == false || shm->pxlist_isempty(id) == false)
     {
@@ -50,6 +50,12 @@ int spxcore(void *args)
             headers[i].ts_nsec = headers[0].ts_nsec;
             headers[i].len = psize;
 
+            if (MAX_HLEN >= psize)
+            {
+                headers[i].caplen = psize;
+                goto next_packet;
+            }
+
             total = 0;
             runlen = 0;
 
@@ -60,16 +66,18 @@ int spxcore(void *args)
                     runlen++;
                     total += 100;
                     if (runlen == shm->args.ascii_runlen)
-                        j = psize;
+                    {
+                        headers[i].caplen = MAX_HLEN;
+                        goto next_packet;
+                    }
                 }
                 else
                     runlen = 0;
             }
 
-            if (MAX_HLEN > psize || runlen == shm->args.ascii_runlen || total >= (shm->args.ascii_percentage * (psize - MIN_HLEN)))
-                headers[i].caplen = psize;
-            else
-                headers[i].caplen = MAX_HLEN;
+            headers[i].caplen = (total >= (shm->args.ascii_percentage * (psize - MIN_HLEN))) ? psize : MAX_HLEN;
+            
+        next_packet:;
         }
 
         shm->pxlist_done(id);
@@ -84,9 +92,10 @@ int sopxcore(void *args)
     struct pcap_packet_header *headers;
     char *packet;
     int num_pkts, psize, runlen, total, seen;
+    int i,j,k;
     int id = shm->gettid();
 
-    printf("[SPU-OPX %d] Starting...\n", shm->id);
+    printf("[SPU-OPX %d] Starting optimized...\n", shm->id);
 
     while (shm->self_quit == false || shm->pxlist_isempty(id) == false)
     {
@@ -98,7 +107,7 @@ int sopxcore(void *args)
 
         packets = shm->pxlist_read(id, &headers, &num_pkts);
 
-        for (int i = 0; i < num_pkts; i++)
+        for (i = 0; i < num_pkts; i++)
         {
             packet = (char *)(packets[i]->buf_addr);
             psize = packets[i]->data_len;
@@ -107,29 +116,48 @@ int sopxcore(void *args)
             headers[i].ts_nsec = headers[0].ts_nsec;
             headers[i].len = psize;
 
-            total = 0;
-            runlen = 0;
-            seen = 0;
-            for (int j = MIN_HLEN + shm->args.ascii_runlen - 1; j >= MIN_HLEN && j < psize; j--, seen++)
+            if (MAX_HLEN >= psize)
             {
+                headers[i].caplen = psize;
+                goto next_opacket;
+            }
+            
+            total = 0;
+            seen = 0;
+
+            for (j = MIN_HLEN + shm->args.ascii_runlen - 1; j < psize; j += shm->args.ascii_runlen)
+            {
+                seen++;
                 if (packet[j] >= MIN_ASCII && packet[j] <= MAX_ASCII)
                 {
-                    runlen++;
+                    runlen = 1;
                     total += 100;
+                    for (k = j - 1; k > j - shm->args.ascii_runlen; k--)
+                    {
+                        seen++;
+                        if (packet[k] >= MIN_ASCII && packet[k] <= MAX_ASCII)
+                        {
+                            runlen++;
+                            total += 100;
+                        }
+                        else
+                        {
+                            j = k;
+                            goto end_oloop;
+                        }
+                    }
+                end_oloop:
                     if (runlen == shm->args.ascii_runlen)
-                        j = psize;
-                }
-                else
-                {
-                    runlen = 0;
-                    j += shm->args.ascii_runlen + 1;
+                    {
+                        headers[i].caplen = MAX_HLEN;
+                        goto next_opacket;
+                    }
                 }
             }
 
-            if (MAX_HLEN > psize || runlen == shm->args.ascii_runlen || total >= (shm->args.ascii_percentage * seen))
-                headers[i].caplen = psize;
-            else
-                headers[i].caplen = MAX_HLEN;
+            headers[i].caplen = (total >= (shm->args.ascii_percentage * seen)) ? psize : MAX_HLEN;
+
+        next_opacket:;
         }
         shm->pxlist_done(id);
     }

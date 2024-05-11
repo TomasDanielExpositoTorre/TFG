@@ -68,6 +68,7 @@ int SpuCommunicationRing::gettid()
 
 int SpuCommunicationRing::rxlist_choosethread(int previous)
 {
+    // int thread = (previous + 1) % nthreads;
     int thread = previous;
 
     while (force_quit == false && burstate[rxi[thread]] != BURST_FREE)

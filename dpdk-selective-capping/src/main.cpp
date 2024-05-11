@@ -165,9 +165,9 @@ int main(int argc, char **argv)
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
             if (args.kernel == OPTIMIZED_CAPPING)
-                rte_eal_remote_launch(pxcore, (void *)(ring[id]), tmp);
-            else
                 rte_eal_remote_launch(opxcore, (void *)(ring[id]), tmp);
+            else
+                rte_eal_remote_launch(pxcore, (void *)(ring[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
             rte_eal_remote_launch(rxcore, (void *)(ring[id]), tmp);

@@ -6,7 +6,7 @@
 /* =========================== Macro Definitions =========================== */
 
 #define MIN_ASCII 0x20
-#define MAX_ASCII 0x7E
+#define MAX_ASCII 0x7D
 
 #define DLT_EN10MB 1
 
