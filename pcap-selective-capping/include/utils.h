@@ -23,6 +23,6 @@ void write_log(struct logging_info *log);
  * @param header Generic per-packet information, as supplied by libpcap.
  * @param packet Packet to process.
  */
-void spc_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet);
+void callback(unsigned char *uargs, const struct pcap_pkthdr *header, const unsigned char *packet);
 
 #endif

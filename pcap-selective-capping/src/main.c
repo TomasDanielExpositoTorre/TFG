@@ -141,7 +141,7 @@ int main(int argc, char **argv)
         Child - log capture statistics
     */
     pthread_create(&logger, &attr, logging_thread, (void *)&(args.log));
-    pcap_loop(handle, -1, spc_handler, (unsigned char *)&(args));
+    pcap_loop(handle, -1, callback, (unsigned char *)&(args));
 
     /* Close data and exit */
     char su, cu, tu;
@@ -159,13 +159,12 @@ int main(int argc, char **argv)
 
     pcap_close(handle);
     pthread_attr_destroy(&attr);
+    psem_destroy(args.log.log_mutex);
 
 #ifndef __SIMSTORAGE
-    pcap_dump_flush(args.file);
-    pcap_dump_close(args.file);
+    fflush(args.file);
+    fclose(args.file);
 #endif
-
-    psem_destroy(args.log.log_mutex);
 
     return EXIT_SUCCESS;
 }

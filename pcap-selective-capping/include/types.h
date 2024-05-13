@@ -10,17 +10,13 @@ typedef unsigned char u_char;
 typedef unsigned int u_int;
 typedef unsigned short u_short;
 
-/* =====================     Capping Definitions     ===================== */
+/* =====================        Value  Macros        ===================== */
 #define MIN_ASCII 0x20
-#define MAX_ASCII 0x7E
-#define NO_CAPPING 0
-#define ERR_UNSUPPORTED -1
-#define ERR_ILLFORMED -2
+#define MAX_ASCII 0x7D
 
 #define TO_MS_VAL 0
 #define SNAPLEN_SIZE 65535
 
-/* =====================      Extra Definitions      ===================== */
 #define false 0
 #define true 1
 #define PCAP_USEC 0xA1B2C3D4
