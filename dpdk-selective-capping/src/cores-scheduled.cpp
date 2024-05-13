@@ -67,7 +67,7 @@ int spxcore(void *args)
                     total += 100;
                     if (runlen == shm->args.ascii_runlen)
                     {
-                        headers[i].caplen = MAX_HLEN;
+                        headers[i].caplen = psize;
                         goto next_packet;
                     }
                 }
@@ -91,7 +91,7 @@ int sopxcore(void *args)
     struct rte_mbuf **packets;
     struct pcap_packet_header *headers;
     char *packet;
-    int num_pkts, psize, runlen, total, seen;
+    int num_pkts, psize, total, seen;
     int i,j,k;
     int id = shm->gettid();
 
@@ -130,29 +130,22 @@ int sopxcore(void *args)
                 seen++;
                 if (packet[j] >= MIN_ASCII && packet[j] <= MAX_ASCII)
                 {
-                    runlen = 1;
                     total += 100;
                     for (k = j - 1; k > j - shm->args.ascii_runlen; k--)
                     {
                         seen++;
                         if (packet[k] >= MIN_ASCII && packet[k] <= MAX_ASCII)
-                        {
-                            runlen++;
                             total += 100;
-                        }
                         else
                         {
                             j = k;
                             goto end_oloop;
                         }
                     }
-                end_oloop:
-                    if (runlen == shm->args.ascii_runlen)
-                    {
-                        headers[i].caplen = MAX_HLEN;
-                        goto next_opacket;
-                    }
+                    headers[i].caplen = psize;
+                    goto next_opacket;
                 }
+                end_oloop:;
             }
 
             headers[i].caplen = (total >= (shm->args.ascii_percentage * seen)) ? psize : MAX_HLEN;
