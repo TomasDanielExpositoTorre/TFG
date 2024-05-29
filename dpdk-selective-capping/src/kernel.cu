@@ -19,7 +19,7 @@ __global__ void selective_capping(struct rte_gpu_comm_list *global_list,
 
         /* Broadcast capture time through burst*/
         headers[i].ts_sec = headers[i].ts_sec;
-        headers[i].ts_nsec = headers[i].ts_nsec;
+        headers[i].ts_usec = headers[i].ts_usec;
         headers[i].len = psize;
 
         for (int j = MIN_HLEN; j < psize; j++)
@@ -64,7 +64,7 @@ __global__ void optimized_capping(struct rte_gpu_comm_list *global_list,
 
         /* Broadcast capture time through burst*/
         headers[i].ts_sec = headers[i].ts_sec;
-        headers[i].ts_nsec = headers[i].ts_nsec;
+        headers[i].ts_usec = headers[i].ts_usec;
         headers[i].len = psize;
 
         for (int j = MIN_HLEN + args.ascii_runlen - 1; j >= MIN_HLEN && j < psize; j--, seen++)

@@ -1,6 +1,6 @@
 #include "headers.h"
 
-GpuCommunicationRing::GpuCommunicationRing(struct arguments args, int i) : LinearCommunicationRing(args, i)
+GpuCommunicationRing::GpuCommunicationRing(struct arguments args, int i) : CommunicationRing(args, i)
 {
     cudaError_t ret;
 
@@ -53,12 +53,12 @@ int GpuCommunicationRing::rxlist_write()
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     headers[rxi * burst_size].ts_sec = ts.tv_sec;
-    headers[rxi * burst_size].ts_nsec = ts.tv_nsec;
+    headers[rxi * burst_size].ts_usec = ts.tv_nsec;
 #else
     struct timeval tv;
     gettimeofday(&tv, NULL);
     headers[rxi * burst_size].ts_sec = tv.tv_sec;
-    headers[rxi * burst_size].ts_nsec = tv.tv_usec;
+    headers[rxi * burst_size].ts_usec = tv.tv_usec;
 #endif
 
     rxlog.lock();

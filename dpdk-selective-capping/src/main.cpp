@@ -150,10 +150,10 @@ int main(int argc, char **argv)
             ring.push_back(new GpuCommunicationRing(args, id));
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(dxcore, (void *)(ring[id]), tmp);
+            rte_eal_remote_launch(gpu_dx, (void *)(ring[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(rxcore, (void *)(ring[id]), tmp);
+            rte_eal_remote_launch(gpu_rx, (void *)(ring[id]), tmp);
         }
     else if (args.threads == 1)
         for (id = 0, tmp = 0; id < args.queues; id++)
@@ -161,16 +161,16 @@ int main(int argc, char **argv)
             ring.push_back(new CpuCommunicationRing(args, id));
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(dxcore, (void *)(ring[id]), tmp);
+            rte_eal_remote_launch(cpu_dx, (void *)(ring[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
             if (args.kernel == OPTIMIZED_CAPPING)
-                rte_eal_remote_launch(opxcore, (void *)(ring[id]), tmp);
+                rte_eal_remote_launch(cpu_opx, (void *)(ring[id]), tmp);
             else
-                rte_eal_remote_launch(pxcore, (void *)(ring[id]), tmp);
+                rte_eal_remote_launch(cpu_px, (void *)(ring[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(rxcore, (void *)(ring[id]), tmp);
+            rte_eal_remote_launch(cpu_rx, (void *)(ring[id]), tmp);
         }
     else
         for (id = 0, tmp = 0; id < args.queues; id++)
@@ -178,23 +178,23 @@ int main(int argc, char **argv)
             ring.push_back(new SpuCommunicationRing(args, id, args.threads));
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(sdxcore, (void *)(ring[id]), tmp);
+            rte_eal_remote_launch(spu_dx, (void *)(ring[id]), tmp);
 
             if (args.kernel == OPTIMIZED_CAPPING)
                 for (int j = 0; j < args.threads; j++)
                 {
                     tmp = rte_get_next_lcore(tmp, 1, 0);
-                    rte_eal_remote_launch(sopxcore, (void *)(ring[id]), tmp);
+                    rte_eal_remote_launch(spu_opx, (void *)(ring[id]), tmp);
                 }
             else
                 for (int j = 0; j < args.threads; j++)
                 {
                     tmp = rte_get_next_lcore(tmp, 1, 0);
-                    rte_eal_remote_launch(spxcore, (void *)(ring[id]), tmp);
+                    rte_eal_remote_launch(spu_px, (void *)(ring[id]), tmp);
                 }
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(srxcore, (void *)(ring[id]), tmp);
+            rte_eal_remote_launch(spu_rx, (void *)(ring[id]), tmp);
         }
 
     mastercore(ring, args);

@@ -89,7 +89,7 @@ struct pcap_file_header
 struct pcap_packet_header
 {
     uint32_t ts_sec;
-    uint32_t ts_nsec;
+    uint32_t ts_usec;
     uint32_t caplen; /* Captured length of packet in bytes */
     uint32_t len;    /* Original length of packet in bytes */
 };
@@ -105,7 +105,8 @@ enum burst_state
 {
     BURST_FREE = 0,
     BURST_PROCESSING = 1,
-    BURST_DONE = 2
+    BURST_DONE = 2, 
+    RX_DONE = 3,
 };
 
 /* User arguments inserted at the beginning of the program */
