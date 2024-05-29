@@ -4,51 +4,44 @@ int spu_rx(void *args)
 {
     SpuCommunicationRing *shm = (SpuCommunicationRing *)args;
     struct timeval tv;
-    int *rxi, *sri, ti = 0, i;
-    int npkts;
-
-    rxi = (int *)malloc(shm->nthreads * sizeof(rxi[0]));
-    sri = (int *)malloc(shm->nthreads * sizeof(sri[0]));
-
-    for (i = 0; i < shm->nthreads; i++)
-        rxi[i] = sri[i] = (shm->subring_size * i);
-
+    int ti = 0, i, npkts;
+    
     printf("[SPU-RX %d] Starting...\n", shm->id);
-    sleep(1);
+
     while (shm->force_quit == false)
     {
-        while (shm->burst_state[rxi[ti]] != BURST_FREE)
+        while (shm->burst_state[shm->rxi[ti]] != BURST_FREE)
             ti = (ti + 1) % shm->nthreads;
 
         npkts = 0;
 
         while (shm->force_quit == false && npkts < (shm->burst_size - RTE_RXBURST_ALIGNSIZE))
-            npkts += rte_eth_rx_burst(NIC_PORT, shm->id, &(shm->packet_ring[rxi[ti]][npkts]), (shm->burst_size - npkts));
+            npkts += rte_eth_rx_burst(NIC_PORT, shm->id, &(shm->packet_ring[shm->rxi[ti]][npkts]), (shm->burst_size - npkts));
 
         if (npkts == 0)
             break;
 
         gettimeofday(&tv, NULL);
-        shm->headers[rxi[ti] * shm->burst_size].ts_sec = tv.tv_sec;
-        shm->headers[rxi[ti] * shm->burst_size].ts_usec = tv.tv_usec;
+        shm->headers[shm->rxi[ti] * shm->burst_size].ts_sec = tv.tv_sec;
+        shm->headers[shm->rxi[ti] * shm->burst_size].ts_usec = tv.tv_usec;
 
         shm->rxlog.lock();
         shm->stats.packets += npkts;
 
         for (i = 0; i < npkts; i++)
-            shm->stats.total_bytes += shm->packet_ring[rxi[ti]][i]->data_len;
+            shm->stats.total_bytes += shm->packet_ring[shm->rxi[ti]][i]->data_len;
         shm->rxlog.unlock();
 
-        shm->npackets[rxi[ti]] = npkts;
-        shm->burst_state[rxi[ti]] = BURST_PROCESSING;
-        rxi[ti] = ((rxi[ti] + 1) & (shm->subring_size - 1)) + sri[ti];
+        shm->npkts[shm->rxi[ti]] = npkts;
+        shm->burst_state[shm->rxi[ti]] = BURST_PROCESSING;
+        shm->rxi[ti] = ((shm->rxi[ti] + 1) % (shm->subring_size)) + shm->sri[ti];
     }
 
     for (ti = 0; ti < shm->nthreads; ti++)
     {
-        while (shm->burst_state[rxi[ti]] != BURST_FREE)
+        while (shm->burst_state[shm->rxi[ti]] != BURST_FREE)
             ;
-        shm->burst_state[rxi[ti]] = RX_DONE;
+        shm->burst_state[shm->rxi[ti]] = RX_DONE;
     }
     return EXIT_SUCCESS;
 }
@@ -58,24 +51,23 @@ int spu_px(void *args)
     SpuCommunicationRing *shm = (SpuCommunicationRing *)args;
     struct rte_mbuf **packets;
     struct pcap_packet_header *headers;
-    char *packet;
-    int pxi, sri, id, i, j;
     int npkts, packetlen, runlen, total;
+    int id, i, j;
+    char *packet;
 
     id = shm->gettid();
-    pxi = sri = id * shm->subring_size;
 
     printf("[SPU-PX %d] Starting...\n", shm->id);
 
-    while (shm->burst_state[pxi] != RX_DONE)
+    while (shm->burst_state[shm->pxi[id]] != RX_DONE)
     {
-        while (shm->burst_state[pxi] != BURST_PROCESSING)
-            if (shm->burst_state[pxi] == RX_DONE)
+        while (shm->burst_state[shm->pxi[id]] != BURST_PROCESSING)
+            if (shm->burst_state[shm->pxi[id]] == RX_DONE)
                 return EXIT_SUCCESS;
 
-        npkts = shm->npackets[pxi];
-        headers = shm->headers + pxi * shm->burst_size;
-        packets = shm->packet_ring[pxi];
+        npkts = shm->npkts[shm->pxi[id]];
+        headers = shm->headers + shm->pxi[id] * shm->burst_size;
+        packets = shm->packet_ring[shm->pxi[id]];
 
         for (i = 0; i < npkts; i++)
         {
@@ -116,8 +108,8 @@ int spu_px(void *args)
         next_packet:;
         }
 
-        shm->burst_state[pxi] = BURST_DONE;
-        pxi = ((pxi + 1) & (shm->subring_size - 1)) + sri;
+        shm->burst_state[shm->pxi[id]] = BURST_DONE;
+        shm->pxi[id] = ((shm->pxi[id] + 1) % (shm->subring_size)) + shm->sri[id];
     }
     return EXIT_SUCCESS;
 }
@@ -127,22 +119,21 @@ int spu_opx(void *args)
     SpuCommunicationRing *shm = (SpuCommunicationRing *)args;
     struct rte_mbuf **packets;
     struct pcap_packet_header *headers;
-    char *packet;
-    int pxi, sri, id, i, j, k;
     int npkts, packetlen, seen, total;
+    int pxi, sri, i, j, k;
+    char *packet;
 
-    id = shm->gettid();
-    pxi = sri = id * shm->subring_size;
+    pxi = sri = shm->sri[shm->gettid()];
 
     printf("[SPU-OPX %d] Starting...\n", shm->id);
-    sleep(1);
+
     while (shm->burst_state[pxi] != RX_DONE)
     {
         while (shm->burst_state[pxi] != BURST_PROCESSING)
             if (shm->burst_state[pxi] == RX_DONE)
                 return EXIT_SUCCESS;
 
-        npkts = shm->npackets[pxi];
+        npkts = shm->npkts[pxi];
         headers = shm->headers + pxi * shm->burst_size;
         packets = shm->packet_ring[pxi];
 
@@ -193,7 +184,7 @@ int spu_opx(void *args)
         }
 
         shm->burst_state[pxi] = BURST_DONE;
-        pxi = ((pxi + 1) & (shm->subring_size - 1)) + sri;
+        pxi = ((pxi + 1) % (shm->subring_size)) + sri;
     }
     return EXIT_SUCCESS;
 }
@@ -203,25 +194,17 @@ int spu_dx(void *args)
     SpuCommunicationRing *shm = (SpuCommunicationRing *)args;
     struct rte_mbuf **packets;
     struct pcap_packet_header *headers;
-    int *dxi, *sri, ti = 0, i;
-    int npkts;
+    int ti = 0, i, npkts;
     bool finished;
 
-    dxi = (int *)malloc(shm->nthreads * sizeof(dxi[0]));
-    sri = (int *)malloc(shm->nthreads * sizeof(sri[0]));
-
-    for (i = 0; i < shm->nthreads; i++)
-        dxi[i] = sri[i] = (shm->subring_size * i);
-
     printf("[SPU-DX %d] Starting...\n", shm->id);
-    sleep(1);
     while (true)
     {
-        while (shm->burst_state[dxi[ti]] != BURST_DONE)
+        while (shm->burst_state[shm->dxi[ti]] != BURST_DONE)
         {
             finished = true;
             for(i = 0; i < shm->nthreads; i++)
-                finished &= (shm->burst_state[dxi[i]] == RX_DONE);
+                finished &= (shm->burst_state[shm->dxi[i]] == RX_DONE);
             
             if (finished == true)
                 return EXIT_SUCCESS;
@@ -229,9 +212,9 @@ int spu_dx(void *args)
             ti = (ti + 1) % shm->nthreads;
         }
 
-        npkts = shm->npackets[dxi[ti]];
-        headers = shm->headers + dxi[ti] * shm->burst_size;
-        packets = shm->packet_ring[dxi[ti]];
+        npkts = shm->npkts[shm->dxi[ti]];
+        headers = shm->headers + shm->dxi[ti] * shm->burst_size;
+        packets = shm->packet_ring[shm->dxi[ti]];
 
         shm->dxlog.lock();
         for (i = 0; i < npkts; i++)
@@ -247,8 +230,8 @@ int spu_dx(void *args)
         // CommunicationRing::write.unlock();
 
         rte_pktmbuf_free_bulk(packets, npkts);
-        shm->burst_state[dxi[ti]] = BURST_FREE;
-        dxi[ti] = ((dxi[ti] + 1) & (shm->subring_size - 1)) + sri[ti];
+        shm->burst_state[shm->dxi[ti]] = BURST_FREE;
+        shm->dxi[ti] = ((shm->dxi[ti] + 1) % (shm->subring_size)) + shm->sri[ti];
         ti = (ti + 1) % shm->nthreads;
     }
     return EXIT_SUCCESS;

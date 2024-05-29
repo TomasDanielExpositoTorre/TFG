@@ -6,17 +6,18 @@
 class CommunicationRing
 {
 public:
-    struct pcap_packet_header *headers;
-    int ring_size;
-    int burst_size;
     static volatile bool force_quit;
-    static std::mutex write;
+
+    struct pcap_packet_header *headers;
     struct queue_stats stats;
     struct arguments args;
-    std::mutex rxlog, dxlog;
-    FILE *pcap_fp;
+
     volatile bool self_quit;
+    int ring_size, burst_size;
     int id;
+
+    FILE *pcap_fp;
+    std::mutex rxlog, dxlog;
 
     /**
      * Constructor method for this object. Creates the necessary elements
@@ -72,8 +73,9 @@ class GpuCommunicationRing : public CommunicationRing
 private:
     struct rte_gpu_comm_list *comm_list;
     struct rte_mbuf *burst[MAX_BURSTSIZE];
+
     int qbursts, mbursts;
-    int rxi, dxi, pxi;
+    int rxi, pxi, dxi;
 
 public:
     cudaStream_t stream;
@@ -105,9 +107,9 @@ public:
      * has been populated. Advances the reception pointer to the next
      * list in the ring.
      *
-     * @param[in] npackets: Number of packets to process.
+     * @param[in] npkts: Number of packets to process.
      */
-    void rxlist_process(int npackets);
+    void rxlist_process(int npkts);
 
     /**
      * @returns True if the packet list has elements left to dump,
@@ -153,13 +155,13 @@ class SpuCommunicationRing : public CommunicationRing
 {
 public:
     struct rte_mbuf ***packet_ring;
-    int *burst_state;
-    int *npackets;
+
+    int *burst_state, *npkts;
+    int *rxi, *pxi, *dxi, *sri;
+    int nthreads, tids, subring_size;
 
     std::mutex tlock;
-    int nthreads, tids;
-    int subring_size;
-    int *rxi, *dxi, *pxi;
+
     SpuCommunicationRing(struct arguments args, int i, int threads);
     ~SpuCommunicationRing();
 
@@ -187,8 +189,9 @@ class CpuCommunicationRing : public CommunicationRing
 {
 public:
     struct rte_mbuf ***packet_ring;
-    int *npackets;
-    int *burst_state;
+
+    int *burst_state, *npkts;
+    int rxi, pxi, dxi;
 
     CpuCommunicationRing(struct arguments args, int i);
     ~CpuCommunicationRing();

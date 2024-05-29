@@ -4,7 +4,6 @@
 /* =======================        ARGP CONFIG        ======================= */
 /* ========================================================================= */
 volatile bool CommunicationRing::force_quit = false;
-std::mutex CommunicationRing::write;
 
 const char *argp_program_version = "DPDK Selective Capping 1.0";
 const char *argp_program_bug_address = "<tomas.exposito@estudiante.uam.es>";

@@ -9,12 +9,13 @@ SpuCommunicationRing::SpuCommunicationRing(struct arguments args, int i, int thr
     rxi = (int *)malloc(nthreads * sizeof(rxi[0]));
     dxi = (int *)malloc(nthreads * sizeof(dxi[0]));
     pxi = (int *)malloc(nthreads * sizeof(pxi[0]));
+    sri = (int *)malloc(nthreads * sizeof(pxi[0]));
 
-    npackets = (int *)malloc(ring_size * sizeof(npackets[0]));
+    npkts = (int *)malloc(ring_size * sizeof(npkts[0]));
     burst_state = (int *)calloc(ring_size, sizeof(burst_state[0]));
     packet_ring = (struct rte_mbuf ***)malloc(ring_size * sizeof(packet_ring[0]));
 
-    if (!rxi || !dxi || !pxi || !npackets || !burst_state || !packet_ring)
+    if (!rxi || !dxi || !pxi || !npkts || !burst_state || !packet_ring)
     {
         fprintf(stderr, "Failed to create memory for cpu packet ring\n");
         exit(EXIT_FAILURE);
@@ -23,7 +24,7 @@ SpuCommunicationRing::SpuCommunicationRing(struct arguments args, int i, int thr
     subring_size = ring_size / nthreads;
 
     for (int i = 0; i < nthreads; i++)
-        rxi[i] = pxi[i] = dxi[i] = (subring_size * i);
+        rxi[i] = pxi[i] = dxi[i] = sri[i] = (subring_size * i);
 
     for (int i = 0; i < ring_size; i++)
     {
@@ -33,7 +34,7 @@ SpuCommunicationRing::SpuCommunicationRing(struct arguments args, int i, int thr
             for (int j = i - 1; j >= 0; j--)
                 free(packet_ring[j]);
             free(packet_ring);
-            free(npackets);
+            free(npkts);
             free(burst_state);
             free(rxi);
             free(dxi);
@@ -49,7 +50,7 @@ SpuCommunicationRing::~SpuCommunicationRing()
     for (int i = 0; i < ring_size; i++)
         free(packet_ring[i]);
     free(packet_ring);
-    free(npackets);
+    free(npkts);
     free(burst_state);
     free(headers);
     free(rxi);
@@ -59,9 +60,9 @@ SpuCommunicationRing::~SpuCommunicationRing()
 
 int SpuCommunicationRing::gettid()
 {
-    int i;
+    int tid;
     tlock.lock();
-    i = tids++;
+    tid = tids++;
     tlock.unlock();
-    return i;
+    return tid;
 }

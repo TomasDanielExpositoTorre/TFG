@@ -27,9 +27,9 @@
 
 #define RTE_RXBURST_ALIGNSIZE 8
 #define MAX_BURSTSIZE 1024
-#define KILOBIT 1024
-#define MEGABIT (KILOBIT * 1024)
-#define GIGABIT (MEGABIT * 1024)
+#define KILOBIT 1000
+#define MEGABIT (KILOBIT * 1000)
+#define GIGABIT (MEGABIT * 1000)
 
 /* ===========================  Temporal Macros  =========================== */
 

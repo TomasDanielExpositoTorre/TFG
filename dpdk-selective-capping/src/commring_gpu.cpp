@@ -70,9 +70,9 @@ int GpuCommunicationRing::rxlist_write()
     return i;
 }
 
-void GpuCommunicationRing::rxlist_process(int npackets)
+void GpuCommunicationRing::rxlist_process(int npkts)
 {
-    int ret = rte_gpu_comm_populate_list_pkts(&(comm_list[rxi]), burst, npackets);
+    int ret = rte_gpu_comm_populate_list_pkts(&(comm_list[rxi]), burst, npkts);
     if (ret != 0)
     {
         GpuCommunicationRing::force_quit = true;
