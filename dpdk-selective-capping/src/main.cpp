@@ -156,12 +156,11 @@ int main(int argc, char **argv)
             rte_eal_remote_launch(gpu_rx, (void *)(ring[id]), tmp);
         }
     else if (args.threads == 1)
+    {
         for (id = 0, tmp = 0; id < args.queues; id++)
         {
             ring.push_back(new CpuCommunicationRing(args, id));
 
-            tmp = rte_get_next_lcore(tmp, 1, 0);
-            rte_eal_remote_launch(cpu_dx, (void *)(ring[id]), tmp);
 
             tmp = rte_get_next_lcore(tmp, 1, 0);
             if (args.kernel == OPTIMIZED_CAPPING)
@@ -172,6 +171,12 @@ int main(int argc, char **argv)
             tmp = rte_get_next_lcore(tmp, 1, 0);
             rte_eal_remote_launch(cpu_rx, (void *)(ring[id]), tmp);
         }
+        tmp = rte_get_next_lcore(tmp, 1, 0);
+        if (args.queues == 1)
+            rte_eal_remote_launch(cpu_dx, (void *)(ring[id]), tmp);
+        else
+            rte_eal_remote_launch(cpu_ndx, static_cast<void*>(&ring), tmp);
+    }
     else
         for (id = 0, tmp = 0; id < args.queues; id++)
         {

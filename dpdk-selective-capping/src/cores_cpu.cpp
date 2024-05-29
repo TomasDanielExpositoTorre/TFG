@@ -221,43 +221,52 @@ int cpu_dx(void *args)
     return EXIT_SUCCESS;
 }
 
-// int cpu_ndx(void *args)
-// {
-//     std::vector<CpuCommunicationRing*>& ring = *static_cast<std::vector<CpuCommunicationRing*>*>(args);
+int cpu_ndx(void *args)
+{
+    std::vector<CpuCommunicationRing *> &ring = *static_cast<std::vector<CpuCommunicationRing *> *>(args);
 
-//     struct rte_mbuf **packets;
-//     struct pcap_packet_header *headers;
-//     int dxi = 0, i;
-//     int npkts;
+    struct rte_mbuf **packets;
+    struct pcap_packet_header *headers;
+    int npkts, nrings = ring.size();
+    int i, ti = 0;
+    bool finished;
 
-//     printf("[CPU-DX] Starting...\n");
+    printf("[CPU-DX] Starting...\n");
 
-//     while (true)
-//     {
-//         while (shm->burst_state[dxi] != BURST_DONE)
-//             if (shm->burst_state[dxi] == RX_DONE)
-//                 return EXIT_SUCCESS;
+    while (true)
+    {
+        while (ring[ti]->burst_state[ring[ti]->dxi] != BURST_DONE)
+        {
+            finished = true;
+            for (i = 0; i < nrings; i++)
+                finished &= (ring[ti]->burst_state[ring[ti]->dxi] == RX_DONE);
 
-//         npkts = shm->npkts[dxi];
-//         headers = shm->headers + dxi * shm->burst_size;
-//         packets = shm->packet_ring[dxi];
+            if (finished == true)
+                return EXIT_SUCCESS;
 
-//         shm->dxlog.lock();
-//         for (i = 0; i < npkts; i++)
-//             shm->stats.stored_bytes += headers[i].caplen;
-//         shm->dxlog.unlock();
+            ti = (ti + 1) % nrings;
+        }
 
-//         // CommunicationRing::write.lock();
-//         // for (int i = 0; i < num_pkts; i++)
-//         // {
-//         //     fwrite_unlocked(&headers[i], sizeof(pcap_packet_header), 1, shm->pcap_fp);
-//         //     fwrite_unlocked((const void *)packets[i]->buf_addr, headers[i].caplen, 1, shm->pcap_fp);
-//         // }
-//         // CommunicationRing::write.unlock();
+        npkts = ring[ti]->npkts[ring[ti]->dxi];
+        headers = ring[ti]->headers + ring[ti]->dxi * ring[ti]->burst_size;
+        packets = ring[ti]->packet_ring[ring[ti]->dxi];
 
-//         rte_pktmbuf_free_bulk(packets, npkts);
-//         shm->burst_state[dxi] = BURST_FREE;
-//         dxi = (dxi + 1) & (shm->ring_size - 1);
-//     }
-//     return EXIT_SUCCESS;
-// }
+        ring[ti]->dxlog.lock();
+        for (i = 0; i < npkts; i++)
+            ring[ti]->stats.stored_bytes += headers[i].caplen;
+        ring[ti]->dxlog.unlock();
+
+#ifndef SIM_STORAGE
+        for (int i = 0; i < npkts; i++)
+        {
+            fwrite_unlocked(&headers[i], sizeof(pcap_packet_header), 1, ring[ti]->pcap_fp);
+            fwrite_unlocked((const void *)packets[i]->buf_addr, headers[i].caplen, 1, ring[ti]->pcap_fp);
+        }
+#endif
+
+        rte_pktmbuf_free_bulk(packets, npkts);
+        ring[ti]->burst_state[ring[ti]->dxi] = BURST_FREE;
+        ring[ti]->dxi = (ring[ti]->dxi + 1) & (ring[ti]->ring_size - 1);
+    }
+    return EXIT_SUCCESS;
+}

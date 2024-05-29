@@ -74,6 +74,7 @@ int cpu_rx(void *args);
 int cpu_px(void *args);
 int cpu_opx(void *args);
 int cpu_dx(void *args);
+int cpu_ndx(void *args);
 
 int spu_rx(void *args);
 int spu_px(void *args);
