@@ -5,7 +5,7 @@ int spu_rx(void *args)
     SpuCommunicationRing *shm = (SpuCommunicationRing *)args;
     struct timeval tv;
     int ti = 0, i, npkts;
-    
+
     printf("[SPU-RX %d] Starting...\n", shm->id);
 
     while (shm->force_quit == false)
@@ -203,9 +203,9 @@ int spu_dx(void *args)
         while (shm->burst_state[shm->dxi[ti]] != BURST_DONE)
         {
             finished = true;
-            for(i = 0; i < shm->nthreads; i++)
+            for (i = 0; i < shm->nthreads; i++)
                 finished &= (shm->burst_state[shm->dxi[i]] == RX_DONE);
-            
+
             if (finished == true)
                 return EXIT_SUCCESS;
 
@@ -221,13 +221,13 @@ int spu_dx(void *args)
             shm->stats.stored_bytes += headers[i].caplen;
         shm->dxlog.unlock();
 
-        // CommunicationRing::write.lock();
-        // for (int i = 0; i < num_pkts; i++)
-        // {
-        //     fwrite_unlocked(&headers[i], sizeof(pcap_packet_header), 1, shm->pcap_fp);
-        //     fwrite_unlocked((const void *)packets[i]->buf_addr, headers[i].caplen, 1, shm->pcap_fp);
-        // }
-        // CommunicationRing::write.unlock();
+#ifndef SIM_STORAGE
+        for (int i = 0; i < npkts; i++)
+        {
+            fwrite_unlocked(&headers[i], sizeof(pcap_packet_header), 1, shm->pcap_fp);
+            fwrite_unlocked((const void *)packets[i]->buf_addr, headers[i].caplen, 1, shm->pcap_fp);
+        }
+#endif
 
         rte_pktmbuf_free_bulk(packets, npkts);
         shm->burst_state[shm->dxi[ti]] = BURST_FREE;

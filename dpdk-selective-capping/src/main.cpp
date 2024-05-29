@@ -89,8 +89,9 @@ int main(int argc, char **argv)
     argp_parse(&argp, argc, argv, 0, 0, &args);
     check_args(args);
 
+#ifndef SIM_STORAGE
     fwrite_unlocked(&file_header, sizeof(pcap_file_header), 1, args.output);
-
+#endif
     /* =======================     Device Setup     ======================= */
 
     cudaSetDevice(GPU_ID);

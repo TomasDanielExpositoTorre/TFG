@@ -28,7 +28,7 @@ int gpu_dx(void *args)
     GpuCommunicationRing *shm = (GpuCommunicationRing *)args;
     struct rte_mbuf **packets;
     struct pcap_packet_header *headers;
-    int num_pkts;
+    int npkts;
 
     if (shm->args.gpu_workload == true)
         cudaSetDevice(GPU_ID);
@@ -42,20 +42,20 @@ int gpu_dx(void *args)
         if (shm->self_quit == true && shm->dxlist_isempty())
             break;
 
-        packets = shm->dxlist_read(&headers, &num_pkts);
+        packets = shm->dxlist_read(&headers, &npkts);
 
         shm->dxlog.lock();
-        for (int i = 0; i < num_pkts; i++)
+        for (int i = 0; i < npkts; i++)
             shm->stats.stored_bytes += headers[i].caplen;
         shm->dxlog.unlock();
 
-        // CommunicationRing::write.lock();
-        // for (int i = 0; i < num_pkts; i++)
-        // {
-        //     fwrite_unlocked(&headers[i], sizeof(pcap_packet_header), 1, shm->pcap_fp);
-        //     fwrite_unlocked((const void *)packets[i]->buf_addr, headers[i].caplen, 1, shm->pcap_fp);
-        // }
-        // CommunicationRing::write.unlock();
+#ifndef SIM_STORAGE
+        for (int i = 0; i < npkts; i++)
+        {
+            fwrite_unlocked(&headers[i], sizeof(pcap_packet_header), 1, shm->pcap_fp);
+            fwrite_unlocked((const void *)packets[i]->buf_addr, headers[i].caplen, 1, shm->pcap_fp);
+        }
+#endif
         shm->dxlist_clean();
     }
     return EXIT_SUCCESS;

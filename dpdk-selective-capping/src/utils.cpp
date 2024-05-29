@@ -15,13 +15,14 @@ error_t parse_opt(int key, char *arg, struct argp_state *state)
         if (args->ascii_runlen <= 0 || args->ascii_runlen > (RTE_ETHER_MAX_LEN - MIN_HLEN))
             fail("Incorrect ASCII runlen. Value must be a valid number for ethernet packets.\n");
         break;
-
     case 'o':
+#ifndef SIM_STORAGE
         if ((args->output = fopen(arg, "wb")) == NULL)
         {
             perror("fopen");
             exit(EXIT_FAILURE);
         }
+#endif
         break;
     case 'q':
         args->queues = atoi(arg);
