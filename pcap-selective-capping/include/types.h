@@ -21,9 +21,9 @@ typedef unsigned short u_short;
 #define true 1
 #define PCAP_USEC 0xA1B2C3D4
 #define PCAP_NSEC 0xA1B23C4D
-#define KILOBIT 1024
-#define MEGABIT (KILOBIT * 1024)
-#define GIGABIT (MEGABIT * 1024)
+#define KILOBIT 1000
+#define MEGABIT (KILOBIT * 1000)
+#define GIGABIT (MEGABIT * 1000)
 
 #define VLAN_HLEN 4
 #define UDP_HLEN 8
@@ -42,9 +42,10 @@ typedef unsigned short u_short;
 
 #define psem_init(x) pthread_mutex_init(&(x), NULL)
 #define psem_destroy(x) pthread_mutex_destroy(&(x))
-#define psem_down(x) pthread_mutex_lock(&(x))
-#define psem_up(x) pthread_mutex_unlock(&(x))
 
+/**
+ * @brief Set UNIT character for DATA bits. UNIT can be K, M or G.
+*/
 #define speed_format(data, units)                                                    \
     units = (data > GIGABIT) ? 'G' : (data > MEGABIT) ? 'M'                          \
                                                       : 'K';                         \
@@ -57,6 +58,9 @@ typedef unsigned short u_short;
     sigemptyset(&sigmask);        \
     sigaddset(&sigmask, sig_no)
 
+/**
+ * @brief Update statistics with STORED, CAPPED and TOTAL bytes from packet.
+*/
 #define log_update(log, stored, capped, total) \
     pthread_mutex_lock(&(log->log_mutex));     \
     log->packets++;                            \

@@ -59,8 +59,8 @@ void *logging_thread(void *args)
 int main(int argc, char **argv)
 {
     struct arguments args = {
-        .ascii_percentage = 45,
-        .ascii_runlen = 15,
+        .ascii_percentage = 60,
+        .ascii_runlen = 12,
         .interface = "enp51s0f0np0",
         .input = NULL,
         .output = NULL,
@@ -86,7 +86,7 @@ int main(int argc, char **argv)
     sigset_t thread_mask;
     char error_buff[PCAP_ERRBUF_SIZE];
 
-    /* Block SIGINT for all threads except master */
+    /* Block SIGINT for logging thread */
     set_mask(thread_mask, SIGINT);
     signal(SIGINT, sighandler);
 
@@ -115,12 +115,12 @@ int main(int argc, char **argv)
 
     if (handle == NULL)
     {
-        fprintf(stderr, "[Error:Interface] Couldn't open %s\n", error_buff);
+        fprintf(stderr, "Couldn't open %s\n", error_buff);
         return EXIT_FAILURE;
     }
     if (pcap_datalink(handle) != DLT_EN10MB)
     {
-        fprintf(stderr, "[Error:Interface] %s doesn't provide Ethernet headers\n", args.interface);
+        fprintf(stderr, "Interface %s doesn't provide Ethernet headers\n", args.interface);
         pcap_close(handle);
         return EXIT_FAILURE;
     }
@@ -128,7 +128,7 @@ int main(int argc, char **argv)
 #ifndef __SIMSTORAGE
     if (args.output == NULL)
     {
-        fprintf(stderr, "[Error:File] Please provide a file path to dump captured packets\n");
+        fprintf(stderr, "Please provide a file path to dump captured packets\n");
         pcap_close(handle);
         return EXIT_FAILURE;
     }
@@ -143,7 +143,7 @@ int main(int argc, char **argv)
     pthread_create(&logger, &attr, logging_thread, (void *)&(args.log));
     pcap_loop(handle, -1, callback, (unsigned char *)&(args));
 
-    /* Close data and exit */
+    /* Print resulting data and exit */
     char su, cu, tu;
     float ts, tc, tt;
     ts = args.log.stored_bytes * 8;

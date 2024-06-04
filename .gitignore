@@ -3,3 +3,4 @@
 .vscode
 *.pcap
 *.md
+*data

@@ -32,14 +32,11 @@ void write_log(struct logging_info *log)
 void callback(unsigned char *uargs, const struct pcap_pkthdr *header, const unsigned char *packet)
 {
     struct arguments *args = (struct arguments *)(uargs);
-
-    /* Skip processing for small packets - should be filtered via hardware */
-
 #ifndef __OPTIMIZED
-
     int runlen, total, caplen = header->caplen;
     int i;
 
+    /* Skip processing for small packets - should be filtered via hardware */
     if (MAX_HLEN >= caplen)
         goto store_packet;
 
@@ -62,10 +59,10 @@ void callback(unsigned char *uargs, const struct pcap_pkthdr *header, const unsi
     if (total >= (args->ascii_percentage * (header->caplen - MIN_HLEN)))
         goto store_packet; /* Do not cap */
 #else
-
     int total, seen, caplen = header->caplen;
     int i, j;
-
+    
+    /* Skip processing for small packets - should be filtered via hardware */
     if (MAX_HLEN >= caplen)
         goto store_packet;
 
@@ -95,7 +92,6 @@ void callback(unsigned char *uargs, const struct pcap_pkthdr *header, const unsi
     if (total >= (args->ascii_percentage * seen))
         goto store_packet; /* Do not cap */
 #endif
-
     caplen = MAX_HLEN; /* Cap packet */
 
 store_packet:
