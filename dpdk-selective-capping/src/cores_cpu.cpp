@@ -5,12 +5,10 @@ int cpu_rx(void *args)
     CpuCommunicationRing *ring = (CpuCommunicationRing *)args;
     struct timeval tv;
     int i, npkts;
-    unsigned long long j=0;
     printf("[CPU-RX %d] Starting...\n", ring->id);
 
     while (ring->force_quit == false)
     {
-        j++;
         /* Wait until burst is free*/
         while (ring->burst_state[ring->rxi] != FREE)
             ;
@@ -46,7 +44,6 @@ int cpu_rx(void *args)
         ;
     ring->burst_state[ring->rxi] = CLOSED;
 
-    printf("rx %lld\n", j);
 
     return EXIT_SUCCESS;
 }
@@ -59,13 +56,11 @@ int cpu_px(void *args)
     int npkts, packetlen, runlen, total;
     int i, j;
     char *packet;
-    unsigned long long ll=0;
 
     printf("[CPU-PX %d] Starting...\n", ring->id);
 
     while (ring->burst_state[ring->pxi] != CLOSED)
     {
-        ll++;
         /* Wait until burst is full */
         while (ring->burst_state[ring->pxi] != FULL)
             if (ring->burst_state[ring->pxi] == CLOSED)
@@ -121,7 +116,6 @@ int cpu_px(void *args)
         ring->burst_state[ring->pxi] = PROCESSED;
         ring->pxi = (ring->pxi + 1) & (ring->ring_size - 1);
     }
-    printf("px %lld\n", ll);
 
     return EXIT_SUCCESS;
 }

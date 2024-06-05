@@ -3,19 +3,19 @@
 
 #include "headers.h"
 
+/**
+ * @brief Communication ring between three stages in a pipeline.
+ */
 class CommunicationRing
 {
 public:
     static volatile bool force_quit;
-
     struct pcap_packet_header *headers;
     struct queue_stats stats;
-
     volatile bool self_quit;
     int ring_size, burst_size;
     int ascii_runlen, ascii_percentage;
     int id;
-
     FILE *pcap_fp;
     std::mutex rxlog, dxlog;
 
@@ -60,13 +60,62 @@ public:
 };
 
 /**
- * @brief Implementation of a communication ring between CPU, GPU and NIC.
+ * @brief Implementation of a communication ring between CPU and NIC.
  *
- * Communication between the CPU and GPU is done through a packet burst
- * ring, where:
- * - A CPU reception core populates packet bursts.
- * - A GPU kernel applies selective capping over the populated packets.
- * - A CPU dumping core writes processed packets from this list in pcap format.
+ * The pipeline stages for this ring are defined as follows:
+ * - RX: A reception core populates packet bursts.
+ * - DX: A processing core applies selective capping over the populated packets.
+ * - PX: A dumping core writes processed packets from this list in pcap format.
+ */
+class CpuCommunicationRing : public CommunicationRing
+{
+public:
+    struct rte_mbuf ***packet_ring;
+    int *burst_state, *npkts;
+    int rxi, pxi, dxi;
+
+    CpuCommunicationRing(struct arguments args, int i);
+    ~CpuCommunicationRing();
+};
+
+/**
+ * @brief Communication ring between CPU cores and NIC.
+ *
+ * The pipeline stages for this ring are defined as follows:
+ * - RX: A reception core populates packet bursts for subrings, through
+ *       a first-come-first-served scheduling
+ * - PX: Many processing core apply selective capping over the populated packets.
+ * - DX: A dumping core writes processed packets from subrings in pcap format,
+ *       through a biased FCFS scheduling.
+ */
+class SpuCommunicationRing : public CommunicationRing
+{
+public:
+    struct rte_mbuf ***packet_ring;
+    int *burst_state, *npkts;
+    int *rxi, *pxi, *dxi, *sri;
+    int nthreads, tids, subring_size;
+    std::mutex tlock;
+
+    SpuCommunicationRing(struct arguments args, int i, int threads);
+    ~SpuCommunicationRing();
+
+    /**
+     * Assigns an identifier to the callee and updates the corresponding value
+     * for the next call.
+     *
+     * @warning This function should be called only once per processing thread.
+     */
+    int gettid();
+};
+
+/**
+ * @brief Communication ring between CPU, GPU and NIC.
+ *
+ * The pipeline stages for this ring are defined as follows:
+ * - RX: A CPU reception core populates packet bursts.
+ * - PX: A GPU kernel applies selective capping over the populated packets.
+ * - DX: A CPU dumping core writes processed packets from this list in pcap format.
  */
 class GpuCommunicationRing : public CommunicationRing
 {
@@ -93,62 +142,9 @@ public:
      * has been populated. Advances the reception pointer to the next
      * list in the ring.
      *
-     * @param[in] npkts: Number of packets to process.
+     * @param npkts: Number of packets to process.
      */
     void rxlist_process(int npkts);
-};
-
-/**
- * @brief Implementation of a communication ring between CPU cores and NIC.
- *
- * Communication is achieved through a packet burst ring, where:
- * - A reception core populates packet bursts for subrings, applying scheduling
- *   through round-robin.
- * - Many processing core apply selective capping over the populated packets.
- * - A dumping core writes processed packets from subrings in pcap format,
- *   applying scheduling through round-robin.
- */
-class SpuCommunicationRing : public CommunicationRing
-{
-public:
-    struct rte_mbuf ***packet_ring;
-    int *burst_state, *npkts;
-    int *rxi, *pxi, *dxi, *sri;
-    int nthreads, tids, subring_size;
-    std::mutex tlock;
-
-    SpuCommunicationRing(struct arguments args, int i, int threads);
-    ~SpuCommunicationRing();
-
-    /**
-     * Assigns an identifier to the callee and updates the corresponding value
-     * for the next call.
-     *
-     * @warning This function should be called only once per processing thread.
-     *
-     * @returns Thread identifier.
-     *
-     */
-    int gettid();
-};
-
-/**
- * @brief Implementation of a communication ring between CPU and NIC.
- *
- * Communication is achieved through a packet burst ring, where:
- * - A reception core populates packet bursts.
- * - A processing core applies selective capping over the populated packets.
- * - A dumping core writes processed packets from this list in pcap format.
- */
-class CpuCommunicationRing : public CommunicationRing
-{
-public:
-    struct rte_mbuf ***packet_ring;
-    int *burst_state, *npkts;
-    int rxi, pxi, dxi;
-
-    CpuCommunicationRing(struct arguments args, int i);
-    ~CpuCommunicationRing();
 };
 
 #endif
