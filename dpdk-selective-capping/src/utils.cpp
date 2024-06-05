@@ -29,7 +29,7 @@ error_t parse_opt(int key, char *arg, struct argp_state *state)
         if (args->queues <= 0)
             fail("Number of queues cannot be 0.\n");
         break;
-    case 'c':
+    case 's':
         args->ring_size = atoi(arg);
         if (args->ring_size <= 0)
             fail("Number of bursts for communication list must be greater than 0.\n");
@@ -63,7 +63,7 @@ void check_args(struct arguments args)
                                           : args.queues * (args.threads + 2) + 1;
 
     if (args.gpu_workload && args.burst_size > 1024)
-        fail("Invalid burst size for GPU workload: %d\n", args.burst_size);
+        fail("Invalid burst size for GPU workload: %ld\n", args.burst_size);
 
     if (min_cores > (int)rte_lcore_count())
         fail("Number of cores should be at least %d to support %d queues for this workload.\n", min_cores, args.queues);
@@ -82,7 +82,7 @@ void mastercore(std::vector<CommunicationRing *> &ring, struct arguments args)
     sleep(5);
     while (CommunicationRing::force_quit == false)
     {
-        rte_eth_stats_get(NIC_PORT, &stats);
+        rte_eth_stats_get(port, &stats);
         time_elapsed += 5;
 
         puts("\n---------------------------------------------------------------------");
@@ -123,7 +123,7 @@ void mastercore(std::vector<CommunicationRing *> &ring, struct arguments args)
     }
 
     RTE_WAIT_WORKERS(id, ret);
-    rte_eth_stats_get(NIC_PORT, &stats);
+    rte_eth_stats_get(port, &stats);
 
     puts("\n---------------------------------------------------------------------");
     puts("Exiting program...");

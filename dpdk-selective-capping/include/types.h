@@ -33,8 +33,8 @@
 
 /* ===========================  Temporal Macros  =========================== */
 
-#define NIC_PORT 0
-#define GPU_ID 0
+#define port 0
+#define gpu 0
 
 #define RTE_PKTBUF_DATAROOM 2048U
 #define GPU_PAGE 65536U
@@ -103,10 +103,10 @@ struct queue_stats
 
 enum burst_state
 {
-    BURST_FREE = 0,
-    BURST_PROCESSING = 1,
-    BURST_DONE = 2, 
-    RX_DONE = 3,
+    FREE = 0,
+    FULL = 1,
+    PROCESSED = 2, 
+    CLOSED = 3,
 };
 
 /* User arguments inserted at the beginning of the program */
@@ -117,8 +117,8 @@ struct arguments
     unsigned short kernel;
     unsigned short queues;
     unsigned short threads;
-    unsigned int burst_size;
-    unsigned int ring_size;
+    long int burst_size;
+    long int ring_size;
     bool gpu_workload;
     FILE *output;
 };

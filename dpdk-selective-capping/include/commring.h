@@ -10,10 +10,10 @@ public:
 
     struct pcap_packet_header *headers;
     struct queue_stats stats;
-    struct arguments args;
 
     volatile bool self_quit;
     int ring_size, burst_size;
+    int ascii_runlen, ascii_percentage;
     int id;
 
     FILE *pcap_fp;
@@ -27,7 +27,7 @@ public:
      * @param i: Identifier for this object.
      */
     CommunicationRing(struct arguments args, int i);
-    virtual ~CommunicationRing() = default;
+    ~CommunicationRing();
 
     /**
      * Class method that allocates and maps CPU memory from ext_mem to
@@ -70,14 +70,12 @@ public:
  */
 class GpuCommunicationRing : public CommunicationRing
 {
-private:
+public:
     struct rte_gpu_comm_list *comm_list;
     struct rte_mbuf *burst[MAX_BURSTSIZE];
-
-    int qbursts, mbursts;
+    int *indices, current, next;
+    int nsbr, sbr_size, kernel;
     int rxi, pxi, dxi;
-
-public:
     cudaStream_t stream;
 
     /**
@@ -91,18 +89,6 @@ public:
     ~GpuCommunicationRing();
 
     /**
-     * @returns True if the packet list is free, False otherwise.
-     */
-    bool rxlist_iswritable();
-
-    /**
-     * Populates the current packet list with a burst of packets.
-     *
-     * @returns The number of packets populated in the list.
-     */
-    int rxlist_write();
-
-    /**
      * Notifies the dedicated processing element that the packet list
      * has been populated. Advances the reception pointer to the next
      * list in the ring.
@@ -110,35 +96,6 @@ public:
      * @param[in] npkts: Number of packets to process.
      */
     void rxlist_process(int npkts);
-
-    /**
-     * @returns True if the packet list has elements left to dump,
-     * False otherwise.
-     */
-    bool dxlist_isempty();
-
-    /**
-     * @returns True if the packet list is done processing,
-     * False otherwise.
-     */
-    bool dxlist_isreadable();
-
-    /**
-     * Reads the processed packet list, setting the headers and list length
-     * values accordingly.
-     *
-     * @param[out] pkt_headers: pcap-like struct with packet list metadata.
-     * @param[out] num_pkts: Number of packets in rte_mbuf packet list.
-     *
-     * @returns list of packets to dump from the packet ring.
-     */
-    struct rte_mbuf **dxlist_read(struct pcap_packet_header **pkt_headers, int *num_pkts);
-
-    /**
-     * Restores the packet list to its original state and returns mbufs to the
-     * mempool. Notifies the dedicated reception element that the list is free.
-     */
-    void dxlist_clean();
 };
 
 /**
@@ -155,11 +112,9 @@ class SpuCommunicationRing : public CommunicationRing
 {
 public:
     struct rte_mbuf ***packet_ring;
-
     int *burst_state, *npkts;
     int *rxi, *pxi, *dxi, *sri;
     int nthreads, tids, subring_size;
-
     std::mutex tlock;
 
     SpuCommunicationRing(struct arguments args, int i, int threads);
@@ -189,14 +144,11 @@ class CpuCommunicationRing : public CommunicationRing
 {
 public:
     struct rte_mbuf ***packet_ring;
-
     int *burst_state, *npkts;
     int rxi, pxi, dxi;
 
     CpuCommunicationRing(struct arguments args, int i);
     ~CpuCommunicationRing();
 };
-
-
 
 #endif

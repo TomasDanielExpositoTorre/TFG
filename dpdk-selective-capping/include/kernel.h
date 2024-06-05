@@ -22,6 +22,6 @@ enum kernel_type
  * @param kargs: arguments sent to the kernel by value.
  */
 void launch_kernel(struct rte_gpu_comm_list *comm_list, int blocks, int threads,
-                   cudaStream_t stream, struct arguments args,
+                   cudaStream_t stream, int ascii_runlen, int ascii_percentage, int kernel,
                    struct pcap_packet_header *headers);
 #endif

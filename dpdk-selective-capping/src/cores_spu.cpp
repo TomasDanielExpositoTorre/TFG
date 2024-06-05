@@ -2,72 +2,72 @@
 
 int spu_rx(void *args)
 {
-    SpuCommunicationRing *shm = (SpuCommunicationRing *)args;
+    SpuCommunicationRing *ring = (SpuCommunicationRing *)args;
     struct timeval tv;
     int ti = 0, i, npkts;
 
-    printf("[SPU-RX %d] Starting...\n", shm->id);
+    printf("[SPU-RX %d] Starting...\n", ring->id);
 
-    while (shm->force_quit == false)
+    while (ring->force_quit == false)
     {
-        while (shm->burst_state[shm->rxi[ti]] != BURST_FREE)
-            ti = (ti + 1) % shm->nthreads;
+        while (ring->burst_state[ring->rxi[ti]] != FREE)
+            ti = (ti + 1) % ring->nthreads;
 
         npkts = 0;
 
-        while (shm->force_quit == false && npkts < (shm->burst_size - RTE_RXBURST_ALIGNSIZE))
-            npkts += rte_eth_rx_burst(NIC_PORT, shm->id, &(shm->packet_ring[shm->rxi[ti]][npkts]), (shm->burst_size - npkts));
+        while (ring->force_quit == false && npkts < (ring->burst_size - RTE_RXBURST_ALIGNSIZE))
+            npkts += rte_eth_rx_burst(port, ring->id, &(ring->packet_ring[ring->rxi[ti]][npkts]), (ring->burst_size - npkts));
 
         if (npkts == 0)
             break;
 
         gettimeofday(&tv, NULL);
-        shm->headers[shm->rxi[ti] * shm->burst_size].ts_sec = tv.tv_sec;
-        shm->headers[shm->rxi[ti] * shm->burst_size].ts_usec = tv.tv_usec;
+        ring->headers[ring->rxi[ti] * ring->burst_size].ts_sec = tv.tv_sec;
+        ring->headers[ring->rxi[ti] * ring->burst_size].ts_usec = tv.tv_usec;
 
-        shm->rxlog.lock();
-        shm->stats.packets += npkts;
+        ring->rxlog.lock();
+        ring->stats.packets += npkts;
 
         for (i = 0; i < npkts; i++)
-            shm->stats.total_bytes += shm->packet_ring[shm->rxi[ti]][i]->data_len;
-        shm->rxlog.unlock();
+            ring->stats.total_bytes += ring->packet_ring[ring->rxi[ti]][i]->data_len;
+        ring->rxlog.unlock();
 
-        shm->npkts[shm->rxi[ti]] = npkts;
-        shm->burst_state[shm->rxi[ti]] = BURST_PROCESSING;
-        shm->rxi[ti] = ((shm->rxi[ti] + 1) % (shm->subring_size)) + shm->sri[ti];
+        ring->npkts[ring->rxi[ti]] = npkts;
+        ring->burst_state[ring->rxi[ti]] = FULL;
+        ring->rxi[ti] = ((ring->rxi[ti] + 1) % (ring->subring_size)) + ring->sri[ti];
     }
 
-    for (ti = 0; ti < shm->nthreads; ti++)
+    for (ti = 0; ti < ring->nthreads; ti++)
     {
-        while (shm->burst_state[shm->rxi[ti]] != BURST_FREE)
+        while (ring->burst_state[ring->rxi[ti]] != FREE)
             ;
-        shm->burst_state[shm->rxi[ti]] = RX_DONE;
+        ring->burst_state[ring->rxi[ti]] = CLOSED;
     }
     return EXIT_SUCCESS;
 }
 
 int spu_px(void *args)
 {
-    SpuCommunicationRing *shm = (SpuCommunicationRing *)args;
+    SpuCommunicationRing *ring = (SpuCommunicationRing *)args;
     struct rte_mbuf **packets;
     struct pcap_packet_header *headers;
     int npkts, packetlen, runlen, total;
     int id, i, j;
     char *packet;
 
-    id = shm->gettid();
+    id = ring->gettid();
 
-    printf("[SPU-PX %d] Starting...\n", shm->id);
+    printf("[SPU-PX %d] Starting...\n", ring->id);
 
-    while (shm->burst_state[shm->pxi[id]] != RX_DONE)
+    while (ring->burst_state[ring->pxi[id]] != CLOSED)
     {
-        while (shm->burst_state[shm->pxi[id]] != BURST_PROCESSING)
-            if (shm->burst_state[shm->pxi[id]] == RX_DONE)
+        while (ring->burst_state[ring->pxi[id]] != FULL)
+            if (ring->burst_state[ring->pxi[id]] == CLOSED)
                 return EXIT_SUCCESS;
 
-        npkts = shm->npkts[shm->pxi[id]];
-        headers = shm->headers + shm->pxi[id] * shm->burst_size;
-        packets = shm->packet_ring[shm->pxi[id]];
+        npkts = ring->npkts[ring->pxi[id]];
+        headers = ring->headers + ring->pxi[id] * ring->burst_size;
+        packets = ring->packet_ring[ring->pxi[id]];
 
         for (i = 0; i < npkts; i++)
         {
@@ -93,7 +93,7 @@ int spu_px(void *args)
                 {
                     runlen++;
                     total += 100;
-                    if (runlen == shm->args.ascii_runlen)
+                    if (runlen == ring->ascii_runlen)
                     {
                         headers[i].caplen = packetlen;
                         goto next_packet;
@@ -103,39 +103,39 @@ int spu_px(void *args)
                     runlen = 0;
             }
 
-            headers[i].caplen = (total >= (shm->args.ascii_percentage * (packetlen - MIN_HLEN))) ? packetlen : MAX_HLEN;
+            headers[i].caplen = (total >= (ring->ascii_percentage * (packetlen - MIN_HLEN))) ? packetlen : MAX_HLEN;
 
         next_packet:;
         }
 
-        shm->burst_state[shm->pxi[id]] = BURST_DONE;
-        shm->pxi[id] = ((shm->pxi[id] + 1) % (shm->subring_size)) + shm->sri[id];
+        ring->burst_state[ring->pxi[id]] = PROCESSED;
+        ring->pxi[id] = ((ring->pxi[id] + 1) % (ring->subring_size)) + ring->sri[id];
     }
     return EXIT_SUCCESS;
 }
 
 int spu_opx(void *args)
 {
-    SpuCommunicationRing *shm = (SpuCommunicationRing *)args;
+    SpuCommunicationRing *ring = (SpuCommunicationRing *)args;
     struct rte_mbuf **packets;
     struct pcap_packet_header *headers;
     int npkts, packetlen, seen, total;
     int pxi, sri, i, j, k;
     char *packet;
 
-    pxi = sri = shm->sri[shm->gettid()];
+    pxi = sri = ring->sri[ring->gettid()];
 
-    printf("[SPU-OPX %d] Starting...\n", shm->id);
+    printf("[SPU-OPX %d] Starting...\n", ring->id);
 
-    while (shm->burst_state[pxi] != RX_DONE)
+    while (ring->burst_state[pxi] != CLOSED)
     {
-        while (shm->burst_state[pxi] != BURST_PROCESSING)
-            if (shm->burst_state[pxi] == RX_DONE)
+        while (ring->burst_state[pxi] != FULL)
+            if (ring->burst_state[pxi] == CLOSED)
                 return EXIT_SUCCESS;
 
-        npkts = shm->npkts[pxi];
-        headers = shm->headers + pxi * shm->burst_size;
-        packets = shm->packet_ring[pxi];
+        npkts = ring->npkts[pxi];
+        headers = ring->headers + pxi * ring->burst_size;
+        packets = ring->packet_ring[pxi];
 
         for (i = 0; i < npkts; i++)
         {
@@ -155,13 +155,13 @@ int spu_opx(void *args)
             total = 0;
             seen = 0;
 
-            for (j = MIN_HLEN + shm->args.ascii_runlen - 1; j < packetlen; j += shm->args.ascii_runlen)
+            for (j = MIN_HLEN + ring->ascii_runlen - 1; j < packetlen; j += ring->ascii_runlen)
             {
                 seen++;
                 if (packet[j] >= MIN_ASCII && packet[j] <= MAX_ASCII)
                 {
                     total += 100;
-                    for (k = j - 1; k > j - shm->args.ascii_runlen; k--)
+                    for (k = j - 1; k > j - ring->ascii_runlen; k--)
                     {
                         seen++;
                         if (packet[k] >= MIN_ASCII && packet[k] <= MAX_ASCII)
@@ -178,61 +178,61 @@ int spu_opx(void *args)
             end_oloop:;
             }
 
-            headers[i].caplen = (total >= (shm->args.ascii_percentage * seen)) ? packetlen : MAX_HLEN;
+            headers[i].caplen = (total >= (ring->ascii_percentage * seen)) ? packetlen : MAX_HLEN;
 
         next_opacket:;
         }
 
-        shm->burst_state[pxi] = BURST_DONE;
-        pxi = ((pxi + 1) % (shm->subring_size)) + sri;
+        ring->burst_state[pxi] = PROCESSED;
+        pxi = ((pxi + 1) % (ring->subring_size)) + sri;
     }
     return EXIT_SUCCESS;
 }
 
 int spu_dx(void *args)
 {
-    SpuCommunicationRing *shm = (SpuCommunicationRing *)args;
+    SpuCommunicationRing *ring = (SpuCommunicationRing *)args;
     struct rte_mbuf **packets;
     struct pcap_packet_header *headers;
     int ti = 0, i, npkts;
     bool finished;
 
-    printf("[SPU-DX %d] Starting...\n", shm->id);
+    printf("[SPU-DX %d] Starting...\n", ring->id);
     while (true)
     {
-        while (shm->burst_state[shm->dxi[ti]] != BURST_DONE)
+        while (ring->burst_state[ring->dxi[ti]] != PROCESSED)
         {
             finished = true;
-            for (i = 0; i < shm->nthreads; i++)
-                finished &= (shm->burst_state[shm->dxi[i]] == RX_DONE);
+            for (i = 0; i < ring->nthreads; i++)
+                finished &= (ring->burst_state[ring->dxi[i]] == CLOSED);
 
             if (finished == true)
                 return EXIT_SUCCESS;
 
-            ti = (ti + 1) % shm->nthreads;
+            ti = (ti + 1) % ring->nthreads;
         }
 
-        npkts = shm->npkts[shm->dxi[ti]];
-        headers = shm->headers + shm->dxi[ti] * shm->burst_size;
-        packets = shm->packet_ring[shm->dxi[ti]];
+        npkts = ring->npkts[ring->dxi[ti]];
+        headers = ring->headers + ring->dxi[ti] * ring->burst_size;
+        packets = ring->packet_ring[ring->dxi[ti]];
 
-        shm->dxlog.lock();
+        ring->dxlog.lock();
         for (i = 0; i < npkts; i++)
-            shm->stats.stored_bytes += headers[i].caplen;
-        shm->dxlog.unlock();
+            ring->stats.stored_bytes += headers[i].caplen;
+        ring->dxlog.unlock();
 
 #ifndef SIM_STORAGE
         for (int i = 0; i < npkts; i++)
         {
-            fwrite_unlocked(&headers[i], sizeof(pcap_packet_header), 1, shm->pcap_fp);
-            fwrite_unlocked((const void *)packets[i]->buf_addr, headers[i].caplen, 1, shm->pcap_fp);
+            fwrite_unlocked(&headers[i], sizeof(pcap_packet_header), 1, ring->pcap_fp);
+            fwrite_unlocked((const void *)packets[i]->buf_addr, headers[i].caplen, 1, ring->pcap_fp);
         }
 #endif
 
         rte_pktmbuf_free_bulk(packets, npkts);
-        shm->burst_state[shm->dxi[ti]] = BURST_FREE;
-        shm->dxi[ti] = ((shm->dxi[ti] + 1) % (shm->subring_size)) + shm->sri[ti];
-        ti = (ti + 1) % shm->nthreads;
+        ring->burst_state[ring->dxi[ti]] = FREE;
+        ring->dxi[ti] = ((ring->dxi[ti] + 1) % (ring->subring_size)) + ring->sri[ti];
+        ti = (ti + 1) % ring->nthreads;
     }
     return EXIT_SUCCESS;
 }
